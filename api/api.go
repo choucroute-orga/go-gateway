@@ -22,7 +22,7 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	health := v1.Group("/health")
 	health.GET("/alive", api.getAliveStatus)
 	health.GET("/live", api.getAliveStatus)
-	// health.GET("/ready", api.getReadyStatus)
+	health.GET("/ready", api.getReadyStatus)
 
 	recipes := v1.Group("/recipes")
 	recipes.GET("/:id", api.getRecipeByID)

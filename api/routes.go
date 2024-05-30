@@ -26,22 +26,37 @@ func (api *ApiHandler) getAliveStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, &status)
 }
 
-// func (api *ApiHandler) getReadyStatus(c echo.Context) error {
-// 	l := logger.WithField("request", "getReadyStatus")
-// 	// err := api.mongo.Ping(context.Background(), nil)
-// 	// if err != nil {
-// 	// 	WarnOnError(l, err, "Unable to ping database to check connection.")
-// 	// 	return c.JSON(http.StatusServiceUnavailable, NewHealthResponse(NotReadyStatus))
-// 	// }
-
-// 	return c.JSON(http.StatusOK, NewHealthResponse(ReadyStatus))
-// }
-
 const (
 	RECIPE_MS_URL   = "http://localhost:3001"
 	CATALOG_MS_URL  = "http://localhost:3002"
 	RECIPE_ENDPOINT = "/recipes/"
 )
+
+var LIST_MS_URLS = []string{
+	RECIPE_MS_URL,
+	CATALOG_MS_URL,
+}
+
+func (api *ApiHandler) getReadyStatus(c echo.Context) error {
+	l := logger.WithField("request", "getReadyStatus")
+
+	// Request the health status of each MS
+	for _, msUrl := range LIST_MS_URLS {
+		resp, err := http.Get(msUrl + "/health/ready")
+		if err != nil {
+			FailOnError(l, err, "Error when trying to query recipe MS")
+			return c.JSON(http.StatusServiceUnavailable, NewHealthResponse(NotReadyStatus))
+		}
+
+		// Otherwise, check if the MS is ready
+		if resp.StatusCode != http.StatusOK {
+			FailOnError(l, err, "Service on "+msUrl+" is not ready")
+			return c.JSON(http.StatusServiceUnavailable, NewHealthResponse(NotReadyStatus))
+		}
+	}
+
+	return c.JSON(http.StatusOK, NewHealthResponse(ReadyStatus))
+}
 
 func (api *ApiHandler) getRecipeByID(c echo.Context) error {
 	l := logger.WithField("request", "getRecipe")
