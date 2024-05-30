@@ -1,8 +1,8 @@
 package api
 
 import (
+	"gateway/validation"
 	"net/http"
-	"recipes/validation"
 	"time"
 
 	ut "github.com/go-playground/universal-translator"

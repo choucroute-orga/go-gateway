@@ -1,7 +1,7 @@
 package validation
 
 import (
-	"recipes/configuration"
+	"gateway/configuration"
 
 	"github.com/go-playground/locales/en"
 	ut "github.com/go-playground/universal-translator"

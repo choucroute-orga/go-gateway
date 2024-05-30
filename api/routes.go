@@ -1,13 +1,12 @@
 package api
 
 import (
-	"context"
+	"encoding/json"
+	"gateway/services"
 	"net/http"
-	"recipes/db"
 
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 var logger = logrus.WithField("context", "api/routes")
@@ -27,94 +26,99 @@ func (api *ApiHandler) getAliveStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, &status)
 }
 
-func (api *ApiHandler) getReadyStatus(c echo.Context) error {
-	l := logger.WithField("request", "getReadyStatus")
-	err := api.mongo.Ping(context.Background(), nil)
-	if err != nil {
-		WarnOnError(l, err, "Unable to ping database to check connection.")
-		return c.JSON(http.StatusServiceUnavailable, NewHealthResponse(NotReadyStatus))
-	}
+// func (api *ApiHandler) getReadyStatus(c echo.Context) error {
+// 	l := logger.WithField("request", "getReadyStatus")
+// 	// err := api.mongo.Ping(context.Background(), nil)
+// 	// if err != nil {
+// 	// 	WarnOnError(l, err, "Unable to ping database to check connection.")
+// 	// 	return c.JSON(http.StatusServiceUnavailable, NewHealthResponse(NotReadyStatus))
+// 	// }
 
-	return c.JSON(http.StatusOK, NewHealthResponse(ReadyStatus))
-}
+// 	return c.JSON(http.StatusOK, NewHealthResponse(ReadyStatus))
+// }
 
-func (api *ApiHandler) getRecipeByTitle(c echo.Context) error {
-	l := logger.WithField("request", "getRecipeByTitle")
-	title := c.Param("title")
-	recipe, err := db.FindRecipeByTitle(l, api.mongo, title)
-	if err != nil {
-		return NewNotFoundError(err)
-	}
-	return c.JSON(http.StatusOK, recipe)
-
-}
+const (
+	RECIPE_MS_URL   = "http://localhost:3001"
+	CATALOG_MS_URL  = "http://localhost:3002"
+	RECIPE_ENDPOINT = "/recipes/"
+)
 
 func (api *ApiHandler) getRecipeByID(c echo.Context) error {
-	l := logger.WithField("request", "getRecipeByID")
+	l := logger.WithField("request", "getRecipe")
+
 	id := c.Param("id")
-	idObject, err := primitive.ObjectIDFromHex(id)
+	// Query the recipe MS to retrieve the recipe with the given ID
+	recipeUrl := RECIPE_MS_URL + RECIPE_ENDPOINT + id
+	resp, err := http.Get(recipeUrl)
 	if err != nil {
-		WarnOnError(l, err, "Invalid ID")
-		return NewNotFoundError(err)
+		FailOnError(l, err, "Error when trying to query recipe MS")
+		return NewInternalServerError(err)
 	}
-	recipe, err := db.FindRecipeByID(l, api.mongo, idObject)
-	if err != nil {
-		return NewNotFoundError(err)
-	}
-	return c.JSON(http.StatusOK, recipe)
-}
+	defer resp.Body.Close()
 
-func (api *ApiHandler) saveRecipe(c echo.Context) error {
-	l := logger.WithField("request", "saveRecipe")
-	recipe := new(db.Recipe)
-	if err := c.Bind(recipe); err != nil {
-		FailOnError(l, err, "Request binding failed")
+	if resp.StatusCode != http.StatusOK {
+		FailOnError(l, err, "Error when trying to query recipe MS")
 		return NewInternalServerError(err)
 	}
-	recipe.ID = db.NewID()
-	err := db.SaveRecipe(l, api.mongo, *recipe)
-	if err != nil {
-		FailOnError(l, err, "Error when trying to save recipe")
-		return NewInternalServerError(err)
-	}
-	return c.JSON(http.StatusCreated, recipe)
-}
 
-func (api *ApiHandler) deleteRecipe(c echo.Context) error {
-	l := logger.WithField("request", "deleteRecipeByID")
-	id := c.Param("id")
-	idObject, err := primitive.ObjectIDFromHex(id)
+	// Parse the response body into a Recipe object
+	var recipe services.Recipe
+	err = json.NewDecoder(resp.Body).Decode(&recipe)
 	if err != nil {
-		WarnOnError(l, err, "Invalid ID")
-		return NewNotFoundError(err)
+		FailOnError(l, err, "Error when trying to parse recipe response")
+		return NewInternalServerError(err)
 	}
-	err = db.DeleteRecipeByID(l, api.mongo, idObject)
-	if err != nil {
-		return NewNotFoundError(err)
-	}
-	return c.NoContent(http.StatusNoContent)
-}
 
-func (api *ApiHandler) updateRecipe(c echo.Context) error {
-	l := logger.WithField("request", "updateRecipe")
-	recipe := new(db.Recipe)
-	if err := c.Bind(recipe); err != nil {
-		FailOnError(l, err, "Request binding failed")
-		return NewInternalServerError(err)
+	// Query the catalog MS to retrieve the corresponding ingredients for the recipe
+	ingredients := make([]Ingredient, len(recipe.Ingredients))
+
+	ingredientUrl := CATALOG_MS_URL + "/ingredient/"
+	for i, ingredientRecipe := range recipe.Ingredients {
+
+		resp, err = http.Get(ingredientUrl + ingredientRecipe.ID)
+		if err != nil {
+			FailOnError(l, err, "Error when trying to query catalog MS")
+			return NewInternalServerError(err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			FailOnError(l, err, "Error when trying to query catalog MS")
+			return NewInternalServerError(err)
+		}
+
+		// Parse the response body into a slice of IngredientCatalog objects
+		var ingredientCatalog services.IngredientCatalog
+		err = json.NewDecoder(resp.Body).Decode(&ingredientCatalog)
+		if err != nil {
+			FailOnError(l, err, "Error when trying to parse ingredient response")
+			return NewInternalServerError(err)
+		}
+
+		ingredients[i] = Ingredient{
+			ID:          ingredientRecipe.ID,
+			Name:        ingredientCatalog.Name,
+			Description: ingredientCatalog.Description,
+			Type:        ingredientCatalog.Type,
+			Quantity:    ingredientRecipe.Quantity,
+			Units:       ingredientRecipe.Units,
+		}
 	}
-	if err := c.Validate(recipe); err != nil {
-		FailOnError(l, err, "Validation failed")
-		return NewBadRequestError(err)
+
+	// Create a new Recipe object with the aggregated ingredients
+	recipeResponse := Recipe{
+		ID:          recipe.ID,
+		Name:        recipe.Name,
+		Author:      recipe.Author,
+		Description: recipe.Description,
+		Dish:        services.GetDish(recipe.Dish),
+		Servings:    recipe.Servings,
+		Metadata:    recipe.Metadata,
+		Timers:      recipe.Timers,
+		Steps:       recipe.Steps,
+		Ingredients: ingredients,
 	}
-	id, err := primitive.ObjectIDFromHex(c.Param("id"))
-	if err != nil {
-		return NewNotFoundError(err)
-	}
-	recipe.ID = id
-	err = db.UpsertOne(l, api.mongo, recipe)
-	if err != nil {
-		FailOnError(l, err, "Error when trying to save recipe")
-		return NewInternalServerError(err)
-	}
-	return c.JSON(http.StatusCreated, recipe)
+
+	// Return the aggregated recipe in the response
+	return c.JSON(http.StatusOK, recipeResponse)
 }

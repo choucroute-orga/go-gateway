@@ -1,21 +1,18 @@
 package api
 
 import (
-	"recipes/configuration"
+	"gateway/configuration"
 
 	"github.com/labstack/echo/v4"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type ApiHandler struct {
-	mongo *mongo.Client
-	conf  *configuration.Configuration
+	conf *configuration.Configuration
 }
 
-func NewApiHandler(mongo *mongo.Client, conf *configuration.Configuration) *ApiHandler {
+func NewApiHandler(conf *configuration.Configuration) *ApiHandler {
 	handler := ApiHandler{
-		mongo: mongo,
-		conf:  conf,
+		conf: conf,
 	}
 	return &handler
 }
@@ -25,12 +22,12 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	health := v1.Group("/health")
 	health.GET("/alive", api.getAliveStatus)
 	health.GET("/live", api.getAliveStatus)
-	health.GET("/ready", api.getReadyStatus)
+	// health.GET("/ready", api.getReadyStatus)
 
 	recipes := v1.Group("/recipes")
 	recipes.GET("/:id", api.getRecipeByID)
-	recipes.GET("/title/:title", api.getRecipeByTitle)
-	recipes.POST("", api.saveRecipe)
-	recipes.PUT("/:id", api.updateRecipe)
-	recipes.DELETE("/:id", api.deleteRecipe)
+	// recipes.GET("/title/:title", api.getRecipeByTitle)
+	// recipes.POST("", api.saveRecipe)
+	// recipes.PUT("/:id", api.updateRecipe)
+	// recipes.DELETE("/:id", api.deleteRecipe)
 }
