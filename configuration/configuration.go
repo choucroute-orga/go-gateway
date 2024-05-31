@@ -16,11 +16,11 @@ type Configuration struct {
 	ListenAddress       string
 	ListenRoute         string
 	LogLevel            string
-	DBHost              string
-	DBPort              string
-	DBUser              string
-	DBName              string
-	DBPassword          string
+	RecipeMSURL         string
+	CatalogMSURL        string
+	ShoppingListMSURL   string
+	InventoryMSURL      string
+	RecipeEndpoint      string
 	TranslateValidation bool
 	JWTSecret           string
 }
@@ -44,11 +44,10 @@ func New() *Configuration {
 	conf.ListenAddress = os.Getenv("API_ADDRESS")
 	conf.ListenRoute = os.Getenv("API_ROUTE")
 
-	conf.DBHost = os.Getenv("MONGODB_HOST")
-	conf.DBPort = os.Getenv("MONGODB_PORT")
-	conf.DBUser = os.Getenv("MONGODB_USERNAME")
-	conf.DBName = os.Getenv("MONGODB_DATABASE")
-	conf.DBPassword = os.Getenv("MONGODB_PASSWORD")
+	conf.RecipeMSURL = os.Getenv("RECIPE_MS_URL")
+	conf.CatalogMSURL = os.Getenv("CATALOG_MS_URL")
+	conf.ShoppingListMSURL = os.Getenv("SHOPPING_LIST_MS_URL")
+	conf.InventoryMSURL = os.Getenv("INVENTORY_MS_URL")
 
 	conf.TranslateValidation, err = strconv.ParseBool(os.Getenv("TRANSLATE_VALIDATION"))
 

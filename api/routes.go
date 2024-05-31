@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"gateway/services"
 	"net/http"
@@ -26,25 +27,23 @@ func (api *ApiHandler) getAliveStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, &status)
 }
 
-const (
-	RECIPE_MS_URL   = "http://localhost:3001"
-	CATALOG_MS_URL  = "http://localhost:3002"
-	RECIPE_ENDPOINT = "/recipes/"
-)
-
-var LIST_MS_URLS = []string{
-	RECIPE_MS_URL,
-	CATALOG_MS_URL,
+func (api *ApiHandler) getServicesList() []string {
+	return []string{
+		api.conf.RecipeMSURL,
+		api.conf.CatalogMSURL,
+		api.conf.ShoppingListMSURL,
+		api.conf.InventoryMSURL,
+	}
 }
 
 func (api *ApiHandler) getReadyStatus(c echo.Context) error {
 	l := logger.WithField("request", "getReadyStatus")
 
 	// Request the health status of each MS
-	for _, msUrl := range LIST_MS_URLS {
+	for _, msUrl := range api.getServicesList() {
 		resp, err := http.Get(msUrl + "/health/ready")
 		if err != nil {
-			FailOnError(l, err, "Error when trying to query recipe MS")
+			FailOnError(l, err, "Error when trying to query MS "+msUrl)
 			return c.JSON(http.StatusServiceUnavailable, NewHealthResponse(NotReadyStatus))
 		}
 
@@ -58,12 +57,59 @@ func (api *ApiHandler) getReadyStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, NewHealthResponse(ReadyStatus))
 }
 
+func (api *ApiHandler) postIngredientCatalog(c echo.Context) error {
+
+	l := logger.WithField("request", "postIngredientCatalog")
+
+	// Bind the request body to a postIngredientCatalogRequest object
+	var request interface{}
+
+	if err := c.Bind(&request); err != nil {
+		FailOnError(l, err, "Request binding failed")
+		return NewBadRequestError(err)
+	}
+	if err := c.Validate(&request); err != nil {
+		FailOnError(l, err, "Request validation failed")
+		return NewBadRequestError(err)
+	}
+	json_marshal, err := json.Marshal(request)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to Marshal request")
+		return NewInternalServerError(err)
+	}
+
+	// Send the object to the catalog MS
+	resp, err := http.Post(api.conf.CatalogMSURL+"/ingredient", "application/json", bytes.NewBuffer(json_marshal))
+
+	// Debug log the response
+	l.WithFields(logrus.Fields{
+		"status": resp.StatusCode,
+		"body":   resp.Body,
+	})
+
+	if err != nil {
+		FailOnError(l, err, "Error when trying to post ingredient to catalog MS")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+
+	// Parse the response body into an interface
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode POST response")
+		return NewInternalServerError(err)
+	}
+
+	return c.JSON(resp.StatusCode, response)
+}
+
 func (api *ApiHandler) getRecipeByID(c echo.Context) error {
 	l := logger.WithField("request", "getRecipe")
 
 	id := c.Param("id")
 	// Query the recipe MS to retrieve the recipe with the given ID
-	recipeUrl := RECIPE_MS_URL + RECIPE_ENDPOINT + id
+	recipeUrl := api.conf.RecipeMSURL + "/recipes/" + id
 	resp, err := http.Get(recipeUrl)
 	if err != nil {
 		FailOnError(l, err, "Error when trying to query recipe MS")
@@ -87,7 +133,7 @@ func (api *ApiHandler) getRecipeByID(c echo.Context) error {
 	// Query the catalog MS to retrieve the corresponding ingredients for the recipe
 	ingredients := make([]Ingredient, len(recipe.Ingredients))
 
-	ingredientUrl := CATALOG_MS_URL + "/ingredient/"
+	ingredientUrl := api.conf.CatalogMSURL + "/ingredient/"
 	for i, ingredientRecipe := range recipe.Ingredients {
 
 		resp, err = http.Get(ingredientUrl + ingredientRecipe.ID)
