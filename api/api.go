@@ -4,14 +4,17 @@ import (
 	"gateway/configuration"
 
 	"github.com/labstack/echo/v4"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type ApiHandler struct {
+	amqp *amqp.Connection
 	conf *configuration.Configuration
 }
 
-func NewApiHandler(conf *configuration.Configuration) *ApiHandler {
+func NewApiHandler(amqp *amqp.Connection, conf *configuration.Configuration) *ApiHandler {
 	handler := ApiHandler{
+		amqp: amqp,
 		conf: conf,
 	}
 	return &handler
@@ -26,7 +29,6 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 
 	recipes := v1.Group("/recipe")
 	recipes.GET("/:id", api.getRecipeByID)
-	recipes.GET("/:title", api.getRecipeByTitle)
 	recipes.GET("/ingredient/:id", api.getRecipesByIngredientID)
 	recipes.DELETE("/:id", api.deleteRecipe)
 
@@ -36,4 +38,9 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	// recipes.POST("", api.saveRecipe)
 	// recipes.PUT("/:id", api.updateRecipe)
 	// recipes.DELETE("/:id", api.deleteRecipe)
+
+	shopping_list := v1.Group("/shopping-list")
+	shopping_list.GET("", api.getShoppingList)
+	shopping_list.POST("/recipe/:id", api.postIngredientsForRecipeToShoppingList)
+	
 }

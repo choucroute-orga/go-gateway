@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
 )
 
@@ -380,6 +381,127 @@ func (api *ApiHandler) deleteRecipe(c echo.Context) error {
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
 		FailOnError(l, err, "Error when trying to decode DELETE response")
+		return c.JSON(resp.StatusCode, response)
+	}
+
+	return c.JSON(resp.StatusCode, response)
+}
+
+func (api *ApiHandler) postIngredientsForRecipeToShoppingList(c echo.Context) error {
+
+	l := logger.WithField("request", "postIngredientsForRecipeToShoppingList")
+
+	id := c.Param("id")
+
+	recipe := services.Recipe{}
+	// Query the recipe MS to retrieve the recipe with the given ID
+	recipeUrl := api.conf.RecipeMSURL + "/recipe/" + id
+	resp, err := http.Get(recipeUrl)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to query recipe MS")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode GET response")
+		return c.JSON(resp.StatusCode, response)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return c.JSON(resp.StatusCode, response)
+	}
+
+	// Parse the response body into a Recipe object
+	recipeJson, _ := json.Marshal(response)
+	err = json.Unmarshal(recipeJson, &recipe)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to parse recipe response")
+		return NewInternalServerError(err)
+	}
+
+	ingredients := make([]services.IngredientShoppingList, len(recipe.Ingredients))
+
+	for i, ingredientRecipe := range recipe.Ingredients {
+		ingredients[i] = services.IngredientShoppingList{
+			ID:     ingredientRecipe.ID,
+			Amount: ingredientRecipe.Quantity,
+			Unit:   ingredientRecipe.Units,
+		}
+	}
+
+	recipeSL := services.AddRecipeShoppingList{
+		ID:          id,
+		Ingredients: ingredients,
+	}
+
+	json_marshal, err := json.Marshal(recipeSL)
+
+	if err != nil {
+		FailOnError(l, err, "Error when trying to Marshal request")
+		return NewInternalServerError(err)
+	}
+
+	// Send the object to the shopping list queue
+
+	ch, err := api.amqp.Channel()
+	if err != nil {
+		l.WithError(err).Error("Failed to open a channel")
+	}
+
+	defer ch.Close()
+
+	q, err := ch.QueueDeclare(
+		"shopping-list-recipes", // name
+		true,                    // durable
+		false,                   // delete when unused
+		false,                   // exclusive
+		false,                   // no-wait
+		nil,                     // arguments
+	)
+
+	if err != nil {
+		l.WithError(err).Error("Failed to declare a queue")
+	}
+
+	err = ch.Publish(
+		"",     // exchange
+		q.Name, // routing key
+		false,  // mandatory
+		false,  // immediate
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        json_marshal,
+		})
+
+	if err != nil {
+		l.WithError(err).Error("Failed to publish a message")
+
+	}
+
+	return c.JSON(http.StatusOK, recipeSL)
+
+}
+
+func (api *ApiHandler) getShoppingList(c echo.Context) error {
+
+	l := logger.WithField("request", "getShoppingList")
+
+	// Query the shopping list MS to retrieve all recipes
+	resp, err := http.Get(api.conf.ShoppingListMSURL + "/shopping-list")
+	if err != nil {
+		FailOnError(l, err, "Error when trying to query shopping list MS")
+		return NewInternalServerError(err)
+	}
+
+	defer resp.Body.Close()
+
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode GET response")
 		return c.JSON(resp.StatusCode, response)
 	}
 

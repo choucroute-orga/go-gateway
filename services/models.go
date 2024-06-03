@@ -21,14 +21,14 @@ type Metadata struct {
 
 type Timer struct {
 	Name     string `json:"name" validate:"required"`
-	Quantity int    `json:"quantity" validate:"required,min=1"`
-	Units    string `json:"units" validate:"oneof=seconds minutes hours"`
+	Quantity int    `json:"amount" validate:"required,min=1"`
+	Units    string `json:"unit" validate:"oneof=seconds minutes hours"`
 }
 
 type IngredientRecipe struct {
 	ID       string  `json:"id" validate:"omitempty"`
-	Quantity float64 `json:"quantity" validate:"required,min=0.1"`
-	Units    string  `json:"units" validate:"oneof=i is cs tbsp tsp g kg"`
+	Quantity float64 `json:"amount" validate:"required,min=0.1"`
+	Units    string  `json:"unit" validate:"oneof=i is cs tbsp tsp g kg"`
 }
 
 type Recipe struct {
@@ -48,10 +48,9 @@ type Recipe struct {
 // *** CATALOG MS *** //
 // ---           --- //
 type IngredientCatalog struct {
-	ID          string `json:"id" validate:"omitempty"`
-	Name        string `json:"name" validate:"required"`
-	Description string `json:"description" validate:"required"`
-	Type        string `json:"type" validate:"required,oneof=vegetable fruit meat fish dairy spice sugar cereals nuts other"`
+	ID   string `json:"id" validate:"omitempty"`
+	Name string `json:"name" validate:"required"`
+	Type string `json:"type" validate:"required,oneof=vegetable fruit meat fish dairy spice sugar cereals nuts other"`
 }
 
 func GetDish(dish Dish) string {
@@ -64,4 +63,22 @@ func GetDish(dish Dish) string {
 		return "dessert"
 	}
 	return ""
+}
+
+type IngredientShoppingList struct {
+	ID     string  `json:"id" validate:"omitempty"`
+	Amount float64 `json:"amount" validate:"required,min=0.1"`
+	Unit   string  `json:"unit" validate:"oneof=i is cs tbsp tsp g kg"`
+}
+
+type AddRecipeShoppingList struct {
+	ID          string                   `json:"id" validate:"required,dive,required"`
+	Ingredients []IngredientShoppingList `json:"ingredients" validate:"required,dive,required"`
+}
+
+type IngredientInventory struct {
+	ID       string  `json:"id" validate:"omitempty"`
+	Name     string  `json:"name" validate:"omitempty"`
+	Quantity float64 `json:"quantity" validate:"required,min=0"`
+	Units    string  `json:"units" validate:"oneof=i is cs tbsp tsp g kg"`
 }
