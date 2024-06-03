@@ -238,6 +238,65 @@ func (api *ApiHandler) getIngredientForRecipe(recipe services.Recipe) (*[]Ingred
 	return &ingredients, nil
 }
 
+func (api *ApiHandler) getRecipeByTitle(c echo.Context) error {
+	l := logger.WithField("request", "getRecipeByTitle")
+
+	title := c.Param("title")
+	// Query the recipe MS to retrieve the recipe with the given ID
+	recipeUrl := api.conf.RecipeMSURL + "/recipe/title/" + title
+	resp, err := http.Get(recipeUrl)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to query recipe MS")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode GET response")
+		return c.JSON(resp.StatusCode, response)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return c.JSON(resp.StatusCode, response)
+	}
+
+	// Parse the response body into a Recipe object
+	var recipe services.Recipe
+
+	// Convert the response interface to a Recipe object
+	recipeJson, _ := json.Marshal(response)
+	err = json.Unmarshal(recipeJson, &recipe)
+
+	if err != nil {
+		FailOnError(l, err, "Error when trying to parse recipe response")
+		return NewInternalServerError(err)
+	}
+
+	// Query the catalog MS to retrieve the corresponding ingredients for the recipe
+	ingredients, err := api.getIngredientForRecipe(recipe)
+	if err != nil {
+		return err
+	}
+
+	// Create a new Recipe object with the aggregated ingredients
+	recipeResponse := Recipe{
+		ID:          recipe.ID,
+		Name:        recipe.Name,
+		Author:      recipe.Author,
+		Description: recipe.Description,
+		Dish:        services.GetDish(recipe.Dish),
+		Servings:    recipe.Servings,
+		Metadata:    recipe.Metadata,
+		Timers:      recipe.Timers,
+		Steps:       recipe.Steps,
+		Ingredients: *ingredients,
+	}
+
+	return c.JSON(http.StatusOK, recipeResponse)
+}
+
 func (api *ApiHandler) getRecipeByID(c echo.Context) error {
 	l := logger.WithField("request", "getRecipe")
 

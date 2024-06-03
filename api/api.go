@@ -26,6 +26,7 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 
 	recipes := v1.Group("/recipe")
 	recipes.GET("/:id", api.getRecipeByID)
+	recipes.GET("/:title", api.getRecipeByTitle)
 	recipes.GET("/ingredient/:id", api.getRecipesByIngredientID)
 
 	ingredient := v1.Group("/ingredient")
