@@ -136,9 +136,66 @@ func (api *ApiHandler) postIngredientCatalog(c echo.Context) error {
 // 			Name:        recipe.Name,
 // }
 
-// func (api *ApiHandler) getRecipeByIngredientID(c echo.Context) error {
+func (api *ApiHandler) getRecipesByIngredientID(c echo.Context) error {
 
-// }
+	l := logger.WithField("request", "getRecipesByIngredientID")
+
+	// Query the recipe MS to retrieve all recipes with ingredient
+	resp, err := http.Get(api.conf.RecipeMSURL + "/recipe/ingredient/" + c.Param("id"))
+	if err != nil {
+		FailOnError(l, err, "Error when trying to query recipe MS")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode GET response")
+		return c.JSON(resp.StatusCode, response)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return c.JSON(resp.StatusCode, response)
+	}
+
+	// Parse the response body into a Recipe object
+	var recipes []services.Recipe
+
+	// Convert the response interface to a Recipes array
+	recipeJson, _ := json.Marshal(response)
+	err = json.Unmarshal(recipeJson, &recipes)
+
+	if err != nil {
+		FailOnError(l, err, "Error when trying to parse recipe response")
+		return NewInternalServerError(err)
+	}
+
+	// Create a slice of Recipe objects to return
+	recipeResponse := make([]Recipe, len(recipes))
+	for i, recipe := range recipes {
+		ingredients, err := api.getIngredientForRecipe(recipe)
+		if err != nil {
+			return err
+		}
+
+		recipeResponse[i] = Recipe{
+			ID:          recipe.ID,
+			Name:        recipe.Name,
+			Author:      recipe.Author,
+			Description: recipe.Description,
+			Dish:        services.GetDish(recipe.Dish),
+			Servings:    recipe.Servings,
+			Metadata:    recipe.Metadata,
+			Timers:      recipe.Timers,
+			Steps:       recipe.Steps,
+			Ingredients: *ingredients,
+		}
+
+	}
+
+	return c.JSON(http.StatusOK, recipeResponse)
+}
 
 func (api *ApiHandler) getIngredientForRecipe(recipe services.Recipe) (*[]Ingredient, error) {
 
