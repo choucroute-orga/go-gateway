@@ -104,48 +104,61 @@ func (api *ApiHandler) postIngredientCatalog(c echo.Context) error {
 	return c.JSON(resp.StatusCode, response)
 }
 
-func (api *ApiHandler) getRecipeByID(c echo.Context) error {
-	l := logger.WithField("request", "getRecipe")
+// func (api *Apihandler) getRecipes(c echo.Context) error {
+// 	l := logger.WithField("request", "getRecipes")
 
-	id := c.Param("id")
-	// Query the recipe MS to retrieve the recipe with the given ID
-	recipeUrl := api.conf.RecipeMSURL + "/recipes/" + id
-	resp, err := http.Get(recipeUrl)
-	if err != nil {
-		FailOnError(l, err, "Error when trying to query recipe MS")
-		return NewInternalServerError(err)
-	}
-	defer resp.Body.Close()
+// 	// Query the recipe MS to retrieve all recipes
+// 	resp, err := http.Get(api.conf.RecipeMSURL + "/recipe")
+// 	if err != nil {
+// 		FailOnError(l, err, "Error when trying to query recipe MS")
+// 		return NewInternalServerError(err)
+// 	}
+// 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		FailOnError(l, err, "Error when trying to query recipe MS")
-		return NewInternalServerError(err)
-	}
+// 	if resp.StatusCode != http.StatusOK {
+// 		FailOnError(l, err, "Error when trying to query recipe MS")
+// 		return NewInternalServerError(err)
+// 	}
 
-	// Parse the response body into a Recipe object
-	var recipe services.Recipe
-	err = json.NewDecoder(resp.Body).Decode(&recipe)
-	if err != nil {
-		FailOnError(l, err, "Error when trying to parse recipe response")
-		return NewInternalServerError(err)
-	}
+// 	// Parse the response body into a slice of Recipe objects
+// 	var recipes []services.Recipe
+// 	err = json.NewDecoder(resp.Body).Decode(&recipes)
+// 	if err != nil {
+// 		FailOnError(l, err, "Error when trying to parse recipe response")
+// 		return NewInternalServerError(err)
+// 	}
 
-	// Query the catalog MS to retrieve the corresponding ingredients for the recipe
+// 	// Create a slice of Recipe objects to return
+// 	recipeResponse := make([]Recipe, len(recipes))
+// 	for i, recipe := range recipes {
+// 		recipeResponse[i] = Recipe{
+// 			ID:          recipe.ID,
+// 			Name:        recipe.Name,
+// }
+
+// func (api *ApiHandler) getRecipeByIngredientID(c echo.Context) error {
+
+// }
+
+func (api *ApiHandler) getIngredientForRecipe(recipe services.Recipe) (*[]Ingredient, error) {
+
+	l := logger.WithField("function", "getIngredientForRecipe")
+
 	ingredients := make([]Ingredient, len(recipe.Ingredients))
 
 	ingredientUrl := api.conf.CatalogMSURL + "/ingredient/"
 	for i, ingredientRecipe := range recipe.Ingredients {
 
-		resp, err = http.Get(ingredientUrl + ingredientRecipe.ID)
+		resp, err := http.Get(ingredientUrl + ingredientRecipe.ID)
 		if err != nil {
 			FailOnError(l, err, "Error when trying to query catalog MS")
-			return NewInternalServerError(err)
+			return nil, NewInternalServerError(err)
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			FailOnError(l, err, "Error when trying to query catalog MS")
-			return NewInternalServerError(err)
+			FailOnError(l, err, "Error when requesting the ingredient from catalog MS")
+			return nil, NewInternalServerError(err)
 		}
 
 		// Parse the response body into a slice of IngredientCatalog objects
@@ -153,17 +166,61 @@ func (api *ApiHandler) getRecipeByID(c echo.Context) error {
 		err = json.NewDecoder(resp.Body).Decode(&ingredientCatalog)
 		if err != nil {
 			FailOnError(l, err, "Error when trying to parse ingredient response")
-			return NewInternalServerError(err)
+			return nil, NewInternalServerError(err)
 		}
 
 		ingredients[i] = Ingredient{
-			ID:          ingredientRecipe.ID,
-			Name:        ingredientCatalog.Name,
-			Description: ingredientCatalog.Description,
-			Type:        ingredientCatalog.Type,
-			Quantity:    ingredientRecipe.Quantity,
-			Units:       ingredientRecipe.Units,
+			ID:       ingredientRecipe.ID,
+			Name:     ingredientCatalog.Name,
+			Type:     ingredientCatalog.Type,
+			Quantity: ingredientRecipe.Quantity,
+			Units:    ingredientRecipe.Units,
 		}
+	}
+
+	return &ingredients, nil
+}
+
+func (api *ApiHandler) getRecipeByID(c echo.Context) error {
+	l := logger.WithField("request", "getRecipe")
+
+	id := c.Param("id")
+	// Query the recipe MS to retrieve the recipe with the given ID
+	recipeUrl := api.conf.RecipeMSURL + "/recipe/" + id
+	resp, err := http.Get(recipeUrl)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to query recipe MS")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode GET response")
+		return c.JSON(resp.StatusCode, response)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return c.JSON(resp.StatusCode, response)
+	}
+
+	// Parse the response body into a Recipe object
+	var recipe services.Recipe
+
+	// Convert the response interface to a Recipe object
+	recipeJson, _ := json.Marshal(response)
+	err = json.Unmarshal(recipeJson, &recipe)
+
+	if err != nil {
+		FailOnError(l, err, "Error when trying to parse recipe response")
+		return NewInternalServerError(err)
+	}
+
+	// Query the catalog MS to retrieve the corresponding ingredients for the recipe
+	ingredients, err := api.getIngredientForRecipe(recipe)
+	if err != nil {
+		return err
 	}
 
 	// Create a new Recipe object with the aggregated ingredients
@@ -177,7 +234,7 @@ func (api *ApiHandler) getRecipeByID(c echo.Context) error {
 		Metadata:    recipe.Metadata,
 		Timers:      recipe.Timers,
 		Steps:       recipe.Steps,
-		Ingredients: ingredients,
+		Ingredients: *ingredients,
 	}
 
 	// Return the aggregated recipe in the response

@@ -24,7 +24,7 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	health.GET("/live", api.getAliveStatus)
 	health.GET("/ready", api.getReadyStatus)
 
-	recipes := v1.Group("/recipes")
+	recipes := v1.Group("/recipe")
 	recipes.GET("/:id", api.getRecipeByID)
 
 	ingredient := v1.Group("/ingredient")

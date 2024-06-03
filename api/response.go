@@ -32,12 +32,11 @@ type Metadata struct {
 }
 
 type Ingredient struct {
-	ID          string  `json:"id" validate:"omitempty"`
-	Quantity    float64 `json:"quantity" validate:"required,min=0.1"`
-	Units       string  `json:"units" validate:"oneof=i is cs tbsp tsp g kg"`
-	Name        string  `json:"name" validate:"required"`
-	Description string  `json:"description" validate:"required"`
-	Type        string  `json:"type" validate:"required,oneof=vegetable fruit meat fish dairy spice sugar cereals nuts other"`
+	ID       string  `json:"id" validate:"omitempty"`
+	Quantity float64 `json:"quantity" validate:"required,min=0.1"`
+	Units    string  `json:"units" validate:"oneof=i is cs tbsp tsp g kg"`
+	Name     string  `json:"name" validate:"required"`
+	Type     string  `json:"type" validate:"required,oneof=vegetable fruit meat fish dairy spice sugar cereals nuts other"`
 }
 
 type Recipe struct {
@@ -49,6 +48,6 @@ type Recipe struct {
 	Servings    int               `json:"servings" validate:"required,min=1"`
 	Metadata    map[string]string `json:"metadata" validate:"omitempty"`
 	Timers      []services.Timer  `json:"timers" validate:"omitempty,dive,required"`
-	Steps       []string          `json:"steps" validate:"required"`
 	Ingredients []Ingredient      `json:"ingredients" validate:"required,dive,required"`
+	Steps       []string          `json:"steps" validate:"required"`
 }
