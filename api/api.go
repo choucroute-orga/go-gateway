@@ -28,6 +28,7 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	recipes.GET("/:id", api.getRecipeByID)
 	recipes.GET("/:title", api.getRecipeByTitle)
 	recipes.GET("/ingredient/:id", api.getRecipesByIngredientID)
+	recipes.DELETE("/:id", api.deleteRecipe)
 
 	ingredient := v1.Group("/ingredient")
 	ingredient.POST("", api.postIngredientCatalog)

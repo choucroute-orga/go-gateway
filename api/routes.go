@@ -356,3 +356,32 @@ func (api *ApiHandler) getRecipeByID(c echo.Context) error {
 	// Return the aggregated recipe in the response
 	return c.JSON(http.StatusOK, recipeResponse)
 }
+
+func (api *ApiHandler) deleteRecipe(c echo.Context) error {
+	l := logger.WithField("request", "deleteRecipe")
+
+	id := c.Param("id")
+	// Query the recipe MS to delete the recipe with the given ID
+	recipeUrl := api.conf.RecipeMSURL + "/recipe/" + id
+	req, err := http.NewRequest(http.MethodDelete, recipeUrl, nil)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to create DELETE request")
+		return NewInternalServerError(err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to delete recipe")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode DELETE response")
+		return c.JSON(resp.StatusCode, response)
+	}
+
+	return c.JSON(resp.StatusCode, response)
+}
