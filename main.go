@@ -27,4 +27,10 @@ func main() {
 
 	h.Register(v1, conf)
 	r.Logger.Fatal(r.Start(fmt.Sprintf("%v:%v", conf.ListenAddress, conf.ListenPort)))
+
+	defer func() {
+		if err := amqp.Close(); err != nil {
+			panic(err)
+		}
+	}()
 }

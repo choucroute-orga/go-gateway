@@ -12,19 +12,18 @@ var logger = logrus.WithFields(logrus.Fields{
 })
 
 type Configuration struct {
-	ListenPort            string
-	ListenAddress         string
-	ListenRoute           string
-	LogLevel              string
-	RecipeMSURL           string
-	CatalogMSURL          string
-	ShoppingListMSURL     string
-	InventoryMSURL        string
-	RecipeEndpoint        string
-	InventoryRabbitURI    string
-	ShoppingListRabbitURI string
-	TranslateValidation   bool
-	JWTSecret             string
+	ListenPort          string
+	ListenAddress       string
+	ListenRoute         string
+	LogLevel            string
+	RecipeMSURL         string
+	CatalogMSURL        string
+	ShoppingListMSURL   string
+	InventoryMSURL      string
+	RecipeEndpoint      string
+	RabbitURI           string
+	TranslateValidation bool
+	JWTSecret           string
 }
 
 func New() *Configuration {
@@ -50,8 +49,13 @@ func New() *Configuration {
 	conf.CatalogMSURL = os.Getenv("CATALOG_MS_URL")
 	conf.ShoppingListMSURL = os.Getenv("SHOPPING_LIST_MS_URL")
 	conf.InventoryMSURL = os.Getenv("INVENTORY_MS_URL")
-	conf.InventoryRabbitURI = os.Getenv("INVENTORY_RABBIT_URI")
-	conf.ShoppingListRabbitURI = os.Getenv("SHOPPING_LIST_RABBIT_URI")
+
+	rabbitPort := os.Getenv("RABBITMQ_PORT")
+	rabbitHost := os.Getenv("RABBITMQ_HOST")
+	rabbitUser := os.Getenv("RABBITMQ_DEFAULT_USER")
+	rabbitPass := os.Getenv("RABBITMQ_DEFAULT_PASS")
+
+	conf.RabbitURI = "amqp://" + rabbitUser + ":" + rabbitPass + "@" + rabbitHost + ":" + rabbitPort + "/"
 
 	conf.TranslateValidation, err = strconv.ParseBool(os.Getenv("TRANSLATE_VALIDATION"))
 

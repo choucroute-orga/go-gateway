@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"gateway/messages"
 	"gateway/services"
 	"net/http"
 
@@ -453,17 +454,11 @@ func (api *ApiHandler) postIngredientsForRecipeToShoppingList(c echo.Context) er
 
 	defer ch.Close()
 
-	q, err := ch.QueueDeclare(
-		"shopping-list-recipes", // name
-		true,                    // durable
-		false,                   // delete when unused
-		false,                   // exclusive
-		false,                   // no-wait
-		nil,                     // arguments
-	)
+	q, err := messages.GetInventoryShoppingListQueue(api.amqp)
 
 	if err != nil {
 		l.WithError(err).Error("Failed to declare a queue")
+		return NewInternalServerError(err)
 	}
 
 	err = ch.Publish(

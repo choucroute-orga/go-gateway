@@ -1,16 +1,14 @@
-version: "3.8"
-
 services:
 
-  mongo:
-    image: bitnami/mongodb
-    restart: unless-stopped
+  rabbitmq:
+    image: "rabbitmq:3-management"
+    container_name: "rabbitmq"
     env_file: .env
     ports:
-      - ${MONGODB_PORT}:27017
+      - "${RABBITMQ_PORT}:5672"
+      - "15672:15672"
     volumes:
-      - mongo-data:/bitnami/mongodb
-  
+      - "rabbitmq-data:/var/lib/rabbitmq"
 
 volumes:
-  mongo-data:
+  rabbitmq-data:
