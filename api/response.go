@@ -51,3 +51,14 @@ type Recipe struct {
 	Ingredients []Ingredient      `json:"ingredients" validate:"required,dive,required"`
 	Steps       []string          `json:"steps" validate:"required"`
 }
+
+type RecipeShoppingList struct {
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Ingredients []Ingredient `json:"ingredients"`
+}
+
+type ShoppingList struct {
+	Recipes     []RecipeShoppingList `json:"recipes"`
+	Ingredients []Ingredient         `json:"ingredients"`
+}

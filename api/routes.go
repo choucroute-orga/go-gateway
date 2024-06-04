@@ -225,7 +225,7 @@ func (api *ApiHandler) getIngredientForRecipe(recipe services.Recipe) (*[]Ingred
 		err = json.NewDecoder(resp.Body).Decode(&ingredientCatalog)
 		if err != nil {
 			FailOnError(l, err, "Error when trying to parse ingredient response")
-			return nil, NewInternalServerError(err)
+			break
 		}
 
 		ingredients[i] = Ingredient{
@@ -500,5 +500,123 @@ func (api *ApiHandler) getShoppingList(c echo.Context) error {
 		return c.JSON(resp.StatusCode, response)
 	}
 
-	return c.JSON(resp.StatusCode, response)
+	var ingSl []services.IngredientsShoppingList
+	// Convert the response interface to a Recipes array
+	recipeJson, _ := json.Marshal(response)
+	err = json.Unmarshal(recipeJson, &ingSl)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to parse recipe response")
+		return NewInternalServerError(err)
+	}
+
+	// Navigate through the ingredients and get the recipe ID
+	rSL := []RecipeShoppingList{}
+
+	// First convert the array of Ing to an ingredient response
+
+	ings := []Ingredient{}
+
+	for _, ing := range ingSl {
+
+		// check each quantities in the recipe
+
+		for _, quantity := range ing.Quantities {
+			if quantity.RecipeId != "" {
+
+				// Check if the recipe is already in the list
+				found := false
+				for _, r := range rSL {
+					if r.ID == quantity.RecipeId {
+						found = true
+						break
+					}
+				}
+				// If found, skip to next ingredient
+
+				if !found {
+					// Query the recipe MS to retrieve the recipe with the given ID
+					recipeUrl := api.conf.RecipeMSURL + "/recipe/" + quantity.RecipeId
+					resp, err := http.Get(recipeUrl)
+					if err != nil {
+						FailOnError(l, err, "Error when trying to query recipe MS")
+						return NewInternalServerError(err)
+					}
+					defer resp.Body.Close()
+
+					if resp.StatusCode != http.StatusOK {
+						FailOnError(l, err, "Error when trying to query recipe MS")
+						return NewInternalServerError(err)
+					}
+
+					// Parse the response body into a Recipe object
+					var recipe services.Recipe
+					err = json.NewDecoder(resp.Body).Decode(&recipe)
+					if err != nil {
+						FailOnError(l, err, "Error when trying to parse recipe response")
+						break
+					}
+
+					recipeResponse := RecipeShoppingList{
+						ID:          recipe.ID,
+						Name:        recipe.Name,
+						Ingredients: []Ingredient{},
+					}
+
+					rSL = append(rSL, recipeResponse)
+				}
+
+			}
+		}
+
+		// Query the Catalog MS to the corresponding ingredient for the recipe
+		ingredientUrl := api.conf.CatalogMSURL + "/ingredient/" + ing.ID
+		resp, err := http.Get(ingredientUrl)
+		if err != nil {
+			FailOnError(l, err, "Error when trying to query catalog MS")
+			return NewInternalServerError(err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			FailOnError(l, err, "Error when requesting the ingredient from catalog MS")
+			break
+		}
+
+		var ingredientCatalog services.IngredientCatalog
+		err = json.NewDecoder(resp.Body).Decode(&ingredientCatalog)
+		if err != nil {
+			FailOnError(l, err, "Error when trying to parse ingredient response")
+			break
+		}
+
+		ingredient := Ingredient{
+			ID:   ingredientCatalog.ID,
+			Name: ingredientCatalog.Name,
+			Type: ingredientCatalog.Type,
+		}
+
+		// For each quantity, add the ingredient to the recipe
+		for _, quantity := range ing.Quantities {
+			ingredient.Quantity = quantity.Amount
+			ingredient.Units = quantity.Unit
+			if quantity.RecipeId != "" {
+				// Search for the recipe in the list
+				for i, r := range rSL {
+					if r.ID == quantity.RecipeId {
+						rSL[i].Ingredients = append(rSL[i].Ingredients, ingredient)
+					}
+				}
+			} else {
+				ings = append(ings, ingredient)
+			}
+		}
+
+	}
+
+	// Navigate trou the list to have the recipeIDs
+	sL := ShoppingList{
+		Recipes:     rSL,
+		Ingredients: ings,
+	}
+	return c.JSON(resp.StatusCode, sL)
 }

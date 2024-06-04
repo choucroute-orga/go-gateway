@@ -27,7 +27,7 @@ type Timer struct {
 
 type IngredientRecipe struct {
 	ID       string  `json:"id" validate:"omitempty"`
-	Quantity float64 `json:"amount" validate:"required,min=0.1"`
+	Quantity float64 `json:"amount" validate:"required,min=0"`
 	Units    string  `json:"unit" validate:"oneof=i is cs tbsp tsp g kg"`
 }
 
@@ -67,7 +67,7 @@ func GetDish(dish Dish) string {
 
 type IngredientShoppingList struct {
 	ID     string  `json:"id" validate:"omitempty"`
-	Amount float64 `json:"amount" validate:"required,min=0.1"`
+	Amount float64 `json:"amount" validate:"required,min=0"`
 	Unit   string  `json:"unit" validate:"oneof=i is cs tbsp tsp g kg"`
 }
 
@@ -81,4 +81,13 @@ type IngredientInventory struct {
 	Name     string  `json:"name" validate:"omitempty"`
 	Quantity float64 `json:"quantity" validate:"required,min=0"`
 	Units    string  `json:"units" validate:"oneof=i is cs tbsp tsp g kg"`
+}
+
+type IngredientsShoppingList struct {
+	ID         string `json:"id" validate:"omitempty"`
+	Quantities []struct {
+		Amount   float64 `json:"amount" validate:"required,min=0"`
+		Unit     string  `json:"unit" validate:"oneof=i is cs tbsp tsp g kg"`
+		RecipeId string  `json:"recipe_id" validate:"omitempty"`
+	} `json:"quantities" validate:"required,dive,required"`
 }

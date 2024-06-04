@@ -29,12 +29,12 @@ func GetInventoryShoppingListQueue(conn *amqp.Connection) (*amqp.Queue, error) {
 	}
 
 	q, err := ch.QueueDeclare(
-		"shopping-list-recipes", // name
-		true,                    // durable
-		false,                   // delete when unused
-		false,                   // exclusive
-		false,                   // no-wait
-		nil,                     // arguments
+		"inventory-add-recipes-shopping-list", // name
+		true,                                  // durable
+		false,                                 // delete when unused
+		false,                                 // exclusive
+		false,                                 // no-wait
+		nil,                                   // arguments
 	)
 	if err != nil {
 		logger.WithError(err).Error("Failed to declare a queue")
