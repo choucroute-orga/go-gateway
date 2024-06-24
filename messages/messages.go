@@ -14,7 +14,7 @@ var logger = logrus.WithFields(logrus.Fields{
 })
 
 func New(conf *configuration.Configuration) *amqp.Connection {
-	conn, err := amqp.Dial(conf.RabbitURI)
+	conn, err := amqp.Dial(conf.RabbitURL)
 	if err != nil {
 		panic(err)
 	}

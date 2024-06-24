@@ -28,11 +28,14 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	health.GET("/ready", api.getReadyStatus)
 
 	recipes := v1.Group("/recipe")
+	recipes.GET("", api.getRecipes)
 	recipes.GET("/:id", api.getRecipeByID)
 	recipes.GET("/ingredient/:id", api.getRecipesByIngredientID)
+	recipes.POST("", api.postRecipe)
 	recipes.DELETE("/:id", api.deleteRecipe)
 
 	ingredient := v1.Group("/ingredient")
+	ingredient.GET("", api.getIngredients)
 	ingredient.POST("", api.postIngredientCatalog)
 	// recipes.GET("/title/:title", api.getRecipeByTitle)
 	// recipes.POST("", api.saveRecipe)
@@ -42,5 +45,7 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	shopping_list := v1.Group("/shopping-list")
 	shopping_list.GET("", api.getShoppingList)
 	shopping_list.POST("/recipe/:id", api.postIngredientsForRecipeToShoppingList)
-	
+	shopping_list.DELETE("/ingredient/:id", api.deleteIngredientForRecipeFromShoppingList)
+	shopping_list.DELETE("/recipe/:recipe_id/ingredient/:id", api.deleteIngredientForRecipeFromShoppingList)
+
 }

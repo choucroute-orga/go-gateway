@@ -21,7 +21,7 @@ type Configuration struct {
 	ShoppingListMSURL   string
 	InventoryMSURL      string
 	RecipeEndpoint      string
-	RabbitURI           string
+	RabbitURL           string
 	TranslateValidation bool
 	JWTSecret           string
 }
@@ -50,12 +50,7 @@ func New() *Configuration {
 	conf.ShoppingListMSURL = os.Getenv("SHOPPING_LIST_MS_URL")
 	conf.InventoryMSURL = os.Getenv("INVENTORY_MS_URL")
 
-	rabbitPort := os.Getenv("RABBITMQ_PORT")
-	rabbitHost := os.Getenv("RABBITMQ_HOST")
-	rabbitUser := os.Getenv("RABBITMQ_DEFAULT_USER")
-	rabbitPass := os.Getenv("RABBITMQ_DEFAULT_PASS")
-
-	conf.RabbitURI = "amqp://" + rabbitUser + ":" + rabbitPass + "@" + rabbitHost + ":" + rabbitPort + "/"
+	conf.RabbitURL = os.Getenv("RABBITMQ_URL")
 
 	conf.TranslateValidation, err = strconv.ParseBool(os.Getenv("TRANSLATE_VALIDATION"))
 

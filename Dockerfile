@@ -1,27 +1,24 @@
-# Make a dockerfile for the golang-ms-template
-FROM --platform=linux/amd64 golang:1.22.3 AS builder
+FROM golang:1.22-alpine AS builder
 
-WORKDIR /app
+WORKDIR /usr/src/app/
 
-# Download Go modules
-COPY go.mod go.sum ./
-RUN go mod download
+RUN apk update
 
-# Copy the source code
-COPY . ./
+RUN --mount=type=cache,target=/go/pkg/mod/ \
+    --mount=type=bind,source=./go-gateway/go.sum,target=go.sum \
+    --mount=type=bind,source=./go-gateway/go.mod,target=go.mod \
+    go mod download
 
-# Build
-RUN CGO_ENABLED=0 GOOS=linux go build -o /build
+RUN --mount=type=cache,target=/go/pkg/mod/ \
+    --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=bind,rw,source=./go-gateway,target=. \
+    go build -ldflags "-s -w" -o /go/bin/gateway/ ./
 
+FROM alpine
 
-# New stage
-FROM --platform=linux/amd64 scratch
+WORKDIR /usr/src/app/
 
-# Copy the binary from the build stage
-COPY --from=builder /build /build
+COPY --from=builder /go/bin/gateway/ ./
 
-# Optional:
-EXPOSE 3000
-
-# Run
-CMD ["/build"]
+EXPOSE ${GATEWAY_PORT}
+ENTRYPOINT [ "./gateway" ]

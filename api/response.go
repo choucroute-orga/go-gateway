@@ -32,11 +32,11 @@ type Metadata struct {
 }
 
 type Ingredient struct {
-	ID       string  `json:"id" validate:"omitempty"`
-	Quantity float64 `json:"quantity" validate:"required,min=0.1"`
-	Units    string  `json:"units" validate:"oneof=i is cs tbsp tsp g kg"`
-	Name     string  `json:"name" validate:"required"`
-	Type     string  `json:"type" validate:"required,oneof=vegetable fruit meat fish dairy spice sugar cereals nuts other"`
+	ID     string  `json:"id" validate:"omitempty"`
+	Amount float64 `json:"amount" validate:"required,min=0.1"`
+	Unit   string  `json:"unit" validate:"oneof=i is cs tbsp tsp g kg"`
+	Name   string  `json:"name" validate:"required"`
+	Type   string  `json:"type" validate:"required,oneof=vegetable fruit meat fish dairy spice sugar cereals nuts other"`
 }
 
 type Recipe struct {

@@ -20,15 +20,15 @@ type Metadata struct {
 }
 
 type Timer struct {
-	Name     string `json:"name" validate:"required"`
-	Quantity int    `json:"amount" validate:"required,min=1"`
-	Units    string `json:"unit" validate:"oneof=seconds minutes hours"`
+	Name   string `json:"name" validate:"required"`
+	Amount int    `json:"amount" validate:"required,min=1"`
+	Unit   string `json:"unit" validate:"oneof=seconds minutes hours"`
 }
 
 type IngredientRecipe struct {
-	ID       string  `json:"id" validate:"omitempty"`
-	Quantity float64 `json:"amount" validate:"required,min=0"`
-	Units    string  `json:"unit" validate:"oneof=i is cs tbsp tsp g kg"`
+	ID     string  `json:"id" validate:"omitempty"`
+	Amount float64 `json:"amount" validate:"required,min=0"`
+	Unit   string  `json:"unit" validate:"oneof=i is cs unit l ml mg tbsp tsp g kg"`
 }
 
 type Recipe struct {
@@ -68,7 +68,7 @@ func GetDish(dish Dish) string {
 type IngredientShoppingList struct {
 	ID     string  `json:"id" validate:"omitempty"`
 	Amount float64 `json:"amount" validate:"required,min=0"`
-	Unit   string  `json:"unit" validate:"oneof=i is cs tbsp tsp g kg"`
+	Unit   string  `json:"unit" validate:"oneof=i is cs unit l ml mg tbsp tsp g kg"`
 }
 
 type AddRecipeShoppingList struct {
@@ -77,17 +77,17 @@ type AddRecipeShoppingList struct {
 }
 
 type IngredientInventory struct {
-	ID       string  `json:"id" validate:"omitempty"`
-	Name     string  `json:"name" validate:"omitempty"`
-	Quantity float64 `json:"quantity" validate:"required,min=0"`
-	Units    string  `json:"units" validate:"oneof=i is cs tbsp tsp g kg"`
+	ID     string  `json:"id" validate:"required"`
+	Name   string  `json:"name" validate:"omitempty"`
+	Amount float64 `json:"amount" validate:"required,min=0.1"`
+	Unit   string  `json:"unit" validate:"oneof=i is cs tbsp tsp g kg"`
 }
 
 type IngredientsShoppingList struct {
 	ID         string `json:"id" validate:"omitempty"`
 	Quantities []struct {
 		Amount   float64 `json:"amount" validate:"required,min=0"`
-		Unit     string  `json:"unit" validate:"oneof=i is cs tbsp tsp g kg"`
+		Unit     string  `json:"unit" validate:"oneof=i is cs unit l ml mg tbsp tsp g kg"`
 		RecipeId string  `json:"recipe_id" validate:"omitempty"`
 	} `json:"quantities" validate:"required,dive,required"`
 }

@@ -64,7 +64,7 @@ func (api *ApiHandler) postIngredientCatalog(c echo.Context) error {
 	l := logger.WithField("request", "postIngredientCatalog")
 
 	// Bind the request body to a postIngredientCatalogRequest object
-	var request interface{}
+	var request postIngredientCatalogRequest
 
 	if err := c.Bind(&request); err != nil {
 		FailOnError(l, err, "Request binding failed")
@@ -229,11 +229,11 @@ func (api *ApiHandler) getIngredientForRecipe(recipe services.Recipe) (*[]Ingred
 		}
 
 		ingredients[i] = Ingredient{
-			ID:       ingredientRecipe.ID,
-			Name:     ingredientCatalog.Name,
-			Type:     ingredientCatalog.Type,
-			Quantity: ingredientRecipe.Quantity,
-			Units:    ingredientRecipe.Units,
+			ID:     ingredientRecipe.ID,
+			Name:   ingredientCatalog.Name,
+			Type:   ingredientCatalog.Type,
+			Amount: ingredientRecipe.Amount,
+			Unit:   ingredientRecipe.Unit,
 		}
 	}
 
@@ -297,6 +297,107 @@ func (api *ApiHandler) getRecipeByTitle(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, recipeResponse)
+}
+
+func (api *ApiHandler) getRecipes(c echo.Context) error {
+	l := logger.WithField("request", "getRecipes")
+
+	l.Info("Getting all recipes " + api.conf.RecipeMSURL)
+	// Query the recipe MS to retrieve all recipes
+	resp, err := http.Get(api.conf.RecipeMSURL + "/recipe")
+	if err != nil {
+		FailOnError(l, err, "Error when trying to query recipe MS")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		FailOnError(l, err, "Error when trying to query recipe MS")
+		return NewInternalServerError(err)
+	}
+
+	// Parse the response body into a slice of Recipe objects
+	var recipes interface{}
+	err = json.NewDecoder(resp.Body).Decode(&recipes)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to parse recipe response")
+		return NewInternalServerError(err)
+	}
+
+	return c.JSON(resp.StatusCode, recipes)
+}
+
+func (api *ApiHandler) postRecipe(c echo.Context) error {
+	l := logger.WithField("request", "postRecipe")
+	l.Info("Posting a new recipe")
+	var recipe services.Recipe
+	if err := c.Bind(&recipe); err != nil {
+		FailOnError(l, err, "Request binding failed")
+		return NewBadRequestError(err)
+	}
+	if err := c.Validate(&recipe); err != nil {
+		FailOnError(l, err, "Request validation failed")
+		return NewBadRequestError(err)
+	}
+
+	json_marshal, err := json.Marshal(recipe)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to Marshal request")
+		return NewInternalServerError(err)
+	}
+
+	// Send the object to the recipe MS
+	resp, err := http.Post(api.conf.RecipeMSURL+"/recipe", "application/json", bytes.NewBuffer(json_marshal))
+
+	l.WithFields(logrus.Fields{
+		"status": resp.StatusCode,
+		"body":   resp.Body,
+	})
+
+	if err != nil {
+		FailOnError(l, err, "Error when trying to post recipe to recipe MS")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode POST response")
+		return NewInternalServerError(err)
+	}
+
+	// Return the response from the recipe MS
+	return c.JSON(resp.StatusCode, response)
+
+}
+
+func (api *ApiHandler) getIngredients(c echo.Context) error {
+	l := logger.WithField("request", "getRecipes")
+
+	l.Info("Getting all recipes " + api.conf.CatalogMSURL)
+	// Query the recipe MS to retrieve all recipes
+	resp, err := http.Get(api.conf.CatalogMSURL + "/ingredient")
+	if err != nil {
+		FailOnError(l, err, "Error when trying to query ingredient MS")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		FailOnError(l, err, "Error when trying to query ingredient MS")
+		return NewInternalServerError(err)
+	}
+
+	// Parse the response body into a slice of Recipe objects
+	var recipes interface{}
+	err = json.NewDecoder(resp.Body).Decode(&recipes)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to parse ingredient response")
+		return NewInternalServerError(err)
+	}
+
+	return c.JSON(resp.StatusCode, recipes)
 }
 
 func (api *ApiHandler) getRecipeByID(c echo.Context) error {
@@ -428,8 +529,8 @@ func (api *ApiHandler) postIngredientsForRecipeToShoppingList(c echo.Context) er
 	for i, ingredientRecipe := range recipe.Ingredients {
 		ingredients[i] = services.IngredientShoppingList{
 			ID:     ingredientRecipe.ID,
-			Amount: ingredientRecipe.Quantity,
-			Unit:   ingredientRecipe.Units,
+			Amount: ingredientRecipe.Amount,
+			Unit:   ingredientRecipe.Unit,
 		}
 	}
 
@@ -597,8 +698,8 @@ func (api *ApiHandler) getShoppingList(c echo.Context) error {
 
 		// For each quantity, add the ingredient to the recipe
 		for _, quantity := range ing.Quantities {
-			ingredient.Quantity = quantity.Amount
-			ingredient.Units = quantity.Unit
+			ingredient.Amount = quantity.Amount
+			ingredient.Unit = quantity.Unit
 			if quantity.RecipeId != "" {
 				// Search for the recipe in the list
 				for i, r := range rSL {
@@ -619,4 +720,42 @@ func (api *ApiHandler) getShoppingList(c echo.Context) error {
 		Ingredients: ings,
 	}
 	return c.JSON(resp.StatusCode, sL)
+}
+
+func (api *ApiHandler) deleteIngredientForRecipeFromShoppingList(c echo.Context) error {
+	ingredientId := c.Param("id")
+	recipeId := c.Param("recipe_id")
+	// allQuantities := c.QueryParam("all")
+
+	l := logger.WithField("request", "deleteIngredientForRecipeFromShoppingList")
+
+	slUrl := api.conf.ShoppingListMSURL + "/ingredient/" + ingredientId
+	if recipeId != "" {
+		slUrl = api.conf.ShoppingListMSURL + "/recipe/" + recipeId + "/ingredient/" + ingredientId
+	}
+	req, err := http.NewRequest(http.MethodDelete, slUrl, nil)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to create DELETE request")
+		return NewInternalServerError(err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to delete ingredient in shopping list")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return c.JSON(http.StatusNoContent, nil)
+	}
+
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode DELETE response")
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(resp.StatusCode, response)
 }
