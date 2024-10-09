@@ -48,4 +48,8 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	shopping_list.DELETE("/ingredient/:id", api.deleteIngredientForRecipeFromShoppingList)
 	shopping_list.DELETE("/recipe/:recipe_id/ingredient/:id", api.deleteIngredientForRecipeFromShoppingList)
 
+	inventory := v1.Group("/inventory/ingredient")
+	inventory.GET("", api.getInventory)
+	inventory.POST("", api.postInventory)
+	inventory.DELETE("/:id", api.deleteInventory)
 }

@@ -759,3 +759,105 @@ func (api *ApiHandler) deleteIngredientForRecipeFromShoppingList(c echo.Context)
 
 	return c.JSON(resp.StatusCode, response)
 }
+
+func (api *ApiHandler) getInventory(c echo.Context) error {
+	l := logger.WithField("request", "getInventory")
+	invUrl := api.conf.InventoryMSURL + "/inventory/ingredient"
+	resp, err := http.Get(invUrl)
+	if err != nil {
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode DELETE response")
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+	if resp.StatusCode != http.StatusOK {
+		return c.JSON(resp.StatusCode, response)
+	}
+
+	// TODO Add information from the catalog
+	var inventoryResponse []IngredientInventoryResponse
+	// Convert the response interface to a Recipes array
+	recipeJson, _ := json.Marshal(response)
+	err = json.Unmarshal(recipeJson, &inventoryResponse)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to parse recipe response")
+		return NewInternalServerError(err)
+	}
+	// Return
+	return c.JSON(http.StatusOK, inventoryResponse)
+
+}
+
+func (api *ApiHandler) postInventory(c echo.Context) error {
+	l := logger.WithField("request", "postInventory")
+	invUrl := api.conf.InventoryMSURL + "/inventory/ingredient"
+	var request postIngredientInventoryRequest
+	if err := c.Bind(&request); err != nil {
+		return NewBadRequestError(err)
+	}
+	if err := c.Validate(request); err != nil {
+		return NewBadRequestError(err)
+	}
+
+	json_marshal, err := json.Marshal(request)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to Marshal request")
+		return NewInternalServerError(err)
+	}
+
+	// Send the object to the catalog MS
+	resp, err := http.Post(invUrl, "application/json", bytes.NewBuffer(json_marshal))
+
+	if err != nil {
+		FailOnError(l, err, "Error when trying to post ingredient to catalog MS")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode POST response")
+		return NewInternalServerError(err)
+	}
+
+	return c.JSON(resp.StatusCode, response)
+
+}
+
+func (api *ApiHandler) deleteInventory(c echo.Context) error {
+	ingredientId := c.Param("id")
+
+	l := logger.WithField("request", "deleteIngredientForRecipeFromShoppingList")
+
+	invUrl := api.conf.InventoryMSURL + "/inventory/ingredient/" + ingredientId
+
+	req, err := http.NewRequest(http.MethodDelete, invUrl, nil)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to create DELETE request")
+		return NewInternalServerError(err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to delete ingredient in shopping list")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return c.JSON(http.StatusNoContent, nil)
+	}
+
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode DELETE response")
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(resp.StatusCode, response)
+}

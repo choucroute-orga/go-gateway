@@ -62,3 +62,14 @@ type ShoppingList struct {
 	Recipes     []RecipeShoppingList `json:"recipes"`
 	Ingredients []Ingredient         `json:"ingredients"`
 }
+
+type InventoryQuantity struct {
+	Amount float64 `json:"amount"`
+	Unit   string  `json:"unit"`
+}
+
+type IngredientInventoryResponse struct {
+	ID         string              `json:"id"`
+	Name       string              `json:"name"`
+	Quantities []InventoryQuantity `json:"quantities"`
+}
