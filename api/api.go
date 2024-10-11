@@ -50,6 +50,8 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 
 	inventory := v1.Group("/inventory/ingredient")
 	inventory.GET("", api.getInventory)
+	inventory.GET("/:id", api.getIngredientInventory)
 	inventory.POST("", api.postInventory)
-	inventory.DELETE("/:id", api.deleteInventory)
+	inventory.PUT("/:id", api.putInventory)
+	inventory.DELETE("/:id/user/:userId", api.deleteInventory)
 }

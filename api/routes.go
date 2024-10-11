@@ -3,6 +3,8 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"gateway/messages"
 	"gateway/services"
 	"net/http"
@@ -74,14 +76,14 @@ func (api *ApiHandler) postIngredientCatalog(c echo.Context) error {
 		FailOnError(l, err, "Request validation failed")
 		return NewBadRequestError(err)
 	}
-	json_marshal, err := json.Marshal(request)
+	encodedRequest, err := json.Marshal(request)
 	if err != nil {
 		FailOnError(l, err, "Error when trying to Marshal request")
 		return NewInternalServerError(err)
 	}
 
 	// Send the object to the catalog MS
-	resp, err := http.Post(api.conf.CatalogMSURL+"/ingredient", "application/json", bytes.NewBuffer(json_marshal))
+	resp, err := http.Post(api.conf.CatalogMSURL+"/ingredient", "application/json", bytes.NewBuffer(encodedRequest))
 
 	// Debug log the response
 	l.WithFields(logrus.Fields{
@@ -340,14 +342,14 @@ func (api *ApiHandler) postRecipe(c echo.Context) error {
 		return NewBadRequestError(err)
 	}
 
-	json_marshal, err := json.Marshal(recipe)
+	encodedRecipe, err := json.Marshal(recipe)
 	if err != nil {
 		FailOnError(l, err, "Error when trying to Marshal request")
 		return NewInternalServerError(err)
 	}
 
 	// Send the object to the recipe MS
-	resp, err := http.Post(api.conf.RecipeMSURL+"/recipe", "application/json", bytes.NewBuffer(json_marshal))
+	resp, err := http.Post(api.conf.RecipeMSURL+"/recipe", "application/json", bytes.NewBuffer(encodedRecipe))
 
 	l.WithFields(logrus.Fields{
 		"status": resp.StatusCode,
@@ -495,6 +497,11 @@ func (api *ApiHandler) postIngredientsForRecipeToShoppingList(c echo.Context) er
 
 	id := c.Param("id")
 
+	userId := c.QueryParam("userId")
+	if userId == "" {
+		return NewBadRequestError(errors.New("userId query param is required"))
+	}
+
 	recipe := services.Recipe{}
 	// Query the recipe MS to retrieve the recipe with the given ID
 	recipeUrl := api.conf.RecipeMSURL + "/recipe/" + id
@@ -536,10 +543,11 @@ func (api *ApiHandler) postIngredientsForRecipeToShoppingList(c echo.Context) er
 
 	recipeSL := services.AddRecipeShoppingList{
 		ID:          id,
+		UserID:      userId,
 		Ingredients: ingredients,
 	}
 
-	json_marshal, err := json.Marshal(recipeSL)
+	encodedRecipe, err := json.Marshal(recipeSL)
 
 	if err != nil {
 		FailOnError(l, err, "Error when trying to Marshal request")
@@ -569,7 +577,7 @@ func (api *ApiHandler) postIngredientsForRecipeToShoppingList(c echo.Context) er
 		false,  // immediate
 		amqp.Publishing{
 			ContentType: "application/json",
-			Body:        json_marshal,
+			Body:        encodedRecipe,
 		})
 
 	if err != nil {
@@ -760,9 +768,36 @@ func (api *ApiHandler) deleteIngredientForRecipeFromShoppingList(c echo.Context)
 	return c.JSON(resp.StatusCode, response)
 }
 
+func (api *ApiHandler) getIngredientInventory(c echo.Context) error {
+	l := logger.WithField("request", "getIngredientInventory")
+	userId := c.QueryParam("userId")
+	if userId == "" {
+		return NewBadRequestError(errors.New("userId is required"))
+	}
+	id := c.Param("id")
+	invUrl := fmt.Sprintf("%s/inventory/ingredient/%s?userId=%s", api.conf.InventoryMSURL, id, userId)
+
+	resp, err := http.Get(invUrl)
+	if err != nil {
+		return NewInternalServerError(err)
+	}
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode GET response")
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(resp.StatusCode, response)
+}
+
 func (api *ApiHandler) getInventory(c echo.Context) error {
 	l := logger.WithField("request", "getInventory")
-	invUrl := api.conf.InventoryMSURL + "/inventory/ingredient"
+	userId := c.QueryParam("userId")
+	if userId == "" {
+		return NewBadRequestError(errors.New("userId is required"))
+	}
+	invUrl := fmt.Sprintf("%s/inventory/ingredient?userId=%s", api.conf.InventoryMSURL, userId)
+
 	resp, err := http.Get(invUrl)
 	if err != nil {
 		return NewInternalServerError(err)
@@ -794,7 +829,9 @@ func (api *ApiHandler) getInventory(c echo.Context) error {
 
 func (api *ApiHandler) postInventory(c echo.Context) error {
 	l := logger.WithField("request", "postInventory")
-	invUrl := api.conf.InventoryMSURL + "/inventory/ingredient"
+
+	invUrl := fmt.Sprintf("%s/inventory/ingredient", api.conf.InventoryMSURL)
+
 	var request postIngredientInventoryRequest
 	if err := c.Bind(&request); err != nil {
 		return NewBadRequestError(err)
@@ -828,12 +865,62 @@ func (api *ApiHandler) postInventory(c echo.Context) error {
 
 }
 
+func (api *ApiHandler) putInventory(c echo.Context) error {
+	l := logger.WithField("request", "putInventory")
+
+	var request putIngredientInventoryRequest
+
+	if err := c.Bind(&request); err != nil {
+		return NewBadRequestError(err)
+	}
+	if err := c.Validate(request); err != nil {
+		// TODO Change to UnprocessableEntityError
+		return NewBadRequestError(err)
+	}
+
+	invUrl := fmt.Sprintf("%s/inventory/ingredient/%s?userId=%s", api.conf.InventoryMSURL, request.ID, request.UserID)
+
+	encodedRequest, err := json.Marshal(request)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to Marshal request")
+		return NewInternalServerError(err)
+	}
+
+	// Send the object to the catalog MS
+	req, err := http.NewRequest(http.MethodPut, invUrl, bytes.NewBuffer(encodedRequest))
+	// Change the request Header to application/json
+	req.Header.Set("Content-Type", "application/json")
+	if err != nil {
+		FailOnError(l, err, "Error when trying to create PUT request")
+		return NewInternalServerError(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+
+	if err != nil {
+		FailOnError(l, err, "Error when trying to post ingredient to catalog MS")
+		return NewInternalServerError(err)
+	}
+	defer resp.Body.Close()
+	var response interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to decode POST response")
+		return NewInternalServerError(err)
+	}
+	return c.JSON(resp.StatusCode, response)
+
+}
+
 func (api *ApiHandler) deleteInventory(c echo.Context) error {
-	ingredientId := c.Param("id")
-
-	l := logger.WithField("request", "deleteIngredientForRecipeFromShoppingList")
-
-	invUrl := api.conf.InventoryMSURL + "/inventory/ingredient/" + ingredientId
+	l := logger.WithField("request", "deleteIngredientInventory")
+	var delete deleteIngredientInventoryRequest
+	if err := c.Bind(&delete); err != nil {
+		return NewBadRequestError(err)
+	}
+	if err := c.Validate(delete); err != nil {
+		return NewBadRequestError(err)
+	}
+	invUrl := fmt.Sprintf("%s/inventory/ingredient/%s/%s", api.conf.InventoryMSURL, delete.ID, delete.UserID)
 
 	req, err := http.NewRequest(http.MethodDelete, invUrl, nil)
 	if err != nil {

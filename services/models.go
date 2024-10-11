@@ -73,6 +73,7 @@ type IngredientShoppingList struct {
 
 type AddRecipeShoppingList struct {
 	ID          string                   `json:"id" validate:"required,dive,required"`
+	UserID      string                   `json:"userId" validate:"required"`
 	Ingredients []IngredientShoppingList `json:"ingredients" validate:"required,dive,required"`
 }
 

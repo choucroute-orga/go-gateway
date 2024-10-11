@@ -1,6 +1,9 @@
 package api
 
-import "gateway/services"
+import (
+	"gateway/services"
+	"time"
+)
 
 const (
 	LiveStatus     = "OK"
@@ -69,7 +72,9 @@ type InventoryQuantity struct {
 }
 
 type IngredientInventoryResponse struct {
-	ID         string              `json:"id"`
-	Name       string              `json:"name"`
-	Quantities []InventoryQuantity `json:"quantities"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	InventoryQuantity
 }
