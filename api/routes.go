@@ -2,16 +2,19 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"gateway/messages"
 	"gateway/services"
 	"net/http"
+	"sync"
 
 	"github.com/labstack/echo/v4"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )
 
@@ -630,145 +633,384 @@ func (api *ApiHandler) postIngredientsForRecipeToShoppingList(c echo.Context) er
 }
 
 func (api *ApiHandler) getShoppingList(c echo.Context) error {
+	ctx, span := api.tracer.Start(c.Request().Context(), "api.getShoppingList")
+	defer span.End()
 
-	l := logger.WithField("request", "getShoppingList")
+	l := logger.WithContext(ctx).WithField("request", "getShoppingList")
 
-	// Query the shopping list MS to retrieve all recipes
+	shoppingList, err := api.fetchShoppingList(ctx)
+	if err != nil {
+		return api.handleError(ctx, l, err, "Error fetching shopping list")
+	}
+
+	recipes, ingredients, err := api.processShoppingList(ctx, l, shoppingList)
+	if err != nil {
+		return api.handleError(ctx, l, err, "Error processing shopping list")
+	}
+
+	response := ShoppingList{
+		Recipes:     recipes,
+		Ingredients: ingredients,
+	}
+
+	span.SetAttributes(
+		attribute.Int("recipeCount", len(recipes)),
+		attribute.Int("ingredientCount", len(ingredients)),
+	)
+
+	return c.JSON(http.StatusOK, response)
+}
+
+func (api *ApiHandler) fetchShoppingList(ctx context.Context) ([]services.IngredientsShoppingList, error) {
+	ctx, span := api.tracer.Start(ctx, "api.fetchShoppingList")
+	defer span.End()
+
 	resp, err := http.Get(api.conf.ShoppingListMSURL + "/shopping-list")
 	if err != nil {
-		FailOnError(l, err, "Error when trying to query shopping list MS")
-		return NewInternalServerError(err)
+		span.RecordError(err)
+		return nil, fmt.Errorf("error querying shopping list MS: %w", err)
 	}
-
 	defer resp.Body.Close()
 
-	var response interface{}
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	if err != nil {
-		FailOnError(l, err, "Error when trying to decode GET response")
-		return c.JSON(resp.StatusCode, response)
+	span.SetAttributes(attribute.Int("statusCode", resp.StatusCode))
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("unexpected status code from shopping list MS: %d", resp.StatusCode)
+		span.RecordError(err)
+		return nil, err
 	}
 
-	var ingSl []services.IngredientsShoppingList
-	// Convert the response interface to a Recipes array
-	recipeJson, _ := json.Marshal(response)
-	err = json.Unmarshal(recipeJson, &ingSl)
-	if err != nil {
-		FailOnError(l, err, "Error when trying to parse recipe response")
-		return NewInternalServerError(err)
+	var shoppingList []services.IngredientsShoppingList
+	if err := json.NewDecoder(resp.Body).Decode(&shoppingList); err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("error decoding shopping list response: %w", err)
 	}
 
-	// Navigate through the ingredients and get the recipe ID
-	rSL := []RecipeShoppingList{}
-
-	// First convert the array of Ing to an ingredient response
-
-	ings := []Ingredient{}
-
-	for _, ing := range ingSl {
-
-		// check each quantities in the recipe
-
-		for _, quantity := range ing.Quantities {
-			if quantity.RecipeId != "" {
-
-				// Check if the recipe is already in the list
-				found := false
-				for _, r := range rSL {
-					if r.ID == quantity.RecipeId {
-						found = true
-						break
-					}
-				}
-				// If found, skip to next ingredient
-
-				if !found {
-					// Query the recipe MS to retrieve the recipe with the given ID
-					recipeUrl := api.conf.RecipeMSURL + "/recipe/" + quantity.RecipeId
-					resp, err := http.Get(recipeUrl)
-					if err != nil {
-						FailOnError(l, err, "Error when trying to query recipe MS")
-						return NewInternalServerError(err)
-					}
-					defer resp.Body.Close()
-
-					if resp.StatusCode != http.StatusOK {
-						FailOnError(l, err, "Error when trying to query recipe MS")
-						return NewInternalServerError(err)
-					}
-
-					// Parse the response body into a Recipe object
-					var recipe services.Recipe
-					err = json.NewDecoder(resp.Body).Decode(&recipe)
-					if err != nil {
-						FailOnError(l, err, "Error when trying to parse recipe response")
-						break
-					}
-
-					recipeResponse := RecipeShoppingList{
-						ID:          recipe.ID,
-						Name:        recipe.Name,
-						Ingredients: []Ingredient{},
-					}
-
-					rSL = append(rSL, recipeResponse)
-				}
-
-			}
-		}
-
-		// Query the Catalog MS to the corresponding ingredient for the recipe
-		ingredientUrl := api.conf.CatalogMSURL + "/ingredient/" + ing.ID
-		resp, err := http.Get(ingredientUrl)
-		if err != nil {
-			FailOnError(l, err, "Error when trying to query catalog MS")
-			return NewInternalServerError(err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			FailOnError(l, err, "Error when requesting the ingredient from catalog MS")
-			break
-		}
-
-		var ingredientCatalog services.IngredientCatalog
-		err = json.NewDecoder(resp.Body).Decode(&ingredientCatalog)
-		if err != nil {
-			FailOnError(l, err, "Error when trying to parse ingredient response")
-			break
-		}
-
-		ingredient := Ingredient{
-			ID:   ingredientCatalog.ID,
-			Name: ingredientCatalog.Name,
-			Type: ingredientCatalog.Type,
-		}
-
-		// For each quantity, add the ingredient to the recipe
-		for _, quantity := range ing.Quantities {
-			ingredient.Amount = quantity.Amount
-			ingredient.Unit = quantity.Unit
-			if quantity.RecipeId != "" {
-				// Search for the recipe in the list
-				for i, r := range rSL {
-					if r.ID == quantity.RecipeId {
-						rSL[i].Ingredients = append(rSL[i].Ingredients, ingredient)
-					}
-				}
-			} else {
-				ings = append(ings, ingredient)
-			}
-		}
-
-	}
-
-	// Navigate trou the list to have the recipeIDs
-	sL := ShoppingList{
-		Recipes:     rSL,
-		Ingredients: ings,
-	}
-	return c.JSON(resp.StatusCode, sL)
+	span.SetAttributes(attribute.Int("itemCount", len(shoppingList)))
+	return shoppingList, nil
 }
+
+func (api *ApiHandler) processShoppingList(ctx context.Context, l *logrus.Entry, shoppingList []services.IngredientsShoppingList) ([]RecipeShoppingList, []Ingredient, error) {
+	ctx, span := api.tracer.Start(ctx, "api.processShoppingList")
+	defer span.End()
+
+	recipeMap := make(map[string]*RecipeShoppingList)
+	var ingredients []Ingredient
+
+	// var wg sync.WaitGroup
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(shoppingList))
+
+	// Create a mutex to protect shared resources
+	var mu sync.Mutex
+
+	for _, item := range shoppingList {
+		wg.Add(1)
+		go func(item services.IngredientsShoppingList) {
+			defer wg.Done()
+			if err := api.processShoppingListItem(ctx, l, item, recipeMap, &ingredients, &mu); err != nil {
+				errChan <- err
+			}
+		}(item)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	if err := <-errChan; err != nil {
+		span.RecordError(err)
+		return nil, nil, fmt.Errorf("error processing shopping list item: %w", err)
+	}
+
+	recipes := make([]RecipeShoppingList, 0, len(recipeMap))
+	for _, recipe := range recipeMap {
+		recipes = append(recipes, *recipe)
+	}
+
+	span.SetAttributes(
+		attribute.Int("recipeCount", len(recipes)),
+		attribute.Int("ingredientCount", len(ingredients)),
+	)
+
+	return recipes, ingredients, nil
+}
+
+func (api *ApiHandler) processShoppingListItem(ctx context.Context, l *logrus.Entry, item services.IngredientsShoppingList, recipeMap map[string]*RecipeShoppingList, ingredients *[]Ingredient, mu *sync.Mutex) error {
+	ctx, span := api.tracer.Start(ctx, "api.processShoppingListItem")
+	l = l.WithContext(ctx).WithField("function", "processShoppingListItem")
+	defer span.End()
+
+	span.SetAttributes(attribute.String("ingredientID", item.ID))
+
+	ingredientCatalog, err := api.getIngredientFromCatalog(ctx, item.ID)
+	name := "Unknown"
+	ingType := "Unknown"
+
+	if err != nil {
+		l.WithError(err).Warn("Failed to fetch ingredient from catalog, using partial information")
+	} else {
+		name = ingredientCatalog.Name
+		ingType = ingredientCatalog.Type
+	}
+
+	for _, quantity := range item.Quantities {
+		ingredient := Ingredient{
+			ID:     item.ID,
+			Name:   name,
+			Type:   ingType,
+			Amount: quantity.Amount,
+			Unit:   quantity.Unit,
+		}
+
+		mu.Lock()
+		if quantity.RecipeId != "" {
+			if err := api.addIngredientToRecipe(ctx, l, recipeMap, quantity.RecipeId, ingredient); err != nil {
+				span.RecordError(err)
+				return err
+			}
+		} else {
+			*ingredients = append(*ingredients, ingredient)
+		}
+		mu.Unlock()
+	}
+
+	return nil
+}
+
+func (api *ApiHandler) addIngredientToRecipe(ctx context.Context, l *logrus.Entry, recipeMap map[string]*RecipeShoppingList, recipeID string, ingredient Ingredient) error {
+	ctx, span := api.tracer.Start(ctx, "api.addIngredientToRecipe")
+	l = l.WithContext(ctx).WithFields(logrus.Fields{
+		"function":     "addIngredientToRecipe",
+		"recipeID":     recipeID,
+		"ingredientID": ingredient.ID,
+	})
+	defer span.End()
+
+	span.SetAttributes(attribute.String("recipeID", recipeID))
+
+	if _, exists := recipeMap[recipeID]; !exists {
+		recipe, err := api.getRecipe(ctx, recipeID)
+		name := "Unknown"
+
+		if err != nil {
+			span.RecordError(err)
+			l.Warnf("Failed to fetch recipe: %v", err)
+		} else {
+			name = recipe.Name
+		}
+
+		recipeMap[recipeID] = &RecipeShoppingList{
+			ID:          recipe.ID,
+			Name:        name,
+			Ingredients: []Ingredient{},
+		}
+	}
+
+	recipeMap[recipeID].Ingredients = append(recipeMap[recipeID].Ingredients, ingredient)
+	return nil
+}
+
+func (api *ApiHandler) handleError(ctx context.Context, l *logrus.Entry, err error, message string) error {
+	l.WithError(err).Error(message)
+	return NewInternalServerError(err)
+}
+
+// getRecipe and getIngredientFromCatalog functions remain the same as in the previous version
+
+func (api *ApiHandler) getRecipe(ctx context.Context, recipeID string) (*services.Recipe, error) {
+	_, span := api.tracer.Start(ctx, "api.getRecipe")
+	defer span.End()
+
+	recipeUrl := api.conf.RecipeMSURL + "/recipe/" + recipeID
+	resp, err := http.Get(recipeUrl)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("error querying recipe MS: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("unexpected status code from recipe MS: %d", resp.StatusCode)
+		span.RecordError(err)
+		return nil, err
+	}
+
+	var recipe services.Recipe
+	if err := json.NewDecoder(resp.Body).Decode(&recipe); err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("error parsing recipe response: %w", err)
+	}
+
+	return &recipe, nil
+}
+
+func (api *ApiHandler) getIngredientFromCatalog(ctx context.Context, ingredientID string) (*services.IngredientCatalog, error) {
+	_, span := api.tracer.Start(ctx, "api.getIngredientFromCatalog")
+	defer span.End()
+
+	ingredientUrl := api.conf.CatalogMSURL + "/ingredient/" + ingredientID
+	resp, err := http.Get(ingredientUrl)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("error querying catalog MS: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("unexpected status code from catalog MS: %d", resp.StatusCode)
+		span.RecordError(err)
+		return nil, err
+	}
+
+	var ingredientCatalog services.IngredientCatalog
+	if err := json.NewDecoder(resp.Body).Decode(&ingredientCatalog); err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("error parsing ingredient response: %w", err)
+	}
+
+	return &ingredientCatalog, nil
+}
+
+// func (api *ApiHandler) getShoppingList(c echo.Context) error {
+
+// 	l := logger.WithField("request", "getShoppingList")
+
+// 	// Query the shopping list MS to retrieve all recipes
+// 	resp, err := http.Get(api.conf.ShoppingListMSURL + "/shopping-list")
+// 	if err != nil {
+// 		FailOnError(l, err, "Error when trying to query shopping list MS")
+// 		return NewInternalServerError(err)
+// 	}
+
+// 	defer resp.Body.Close()
+
+// 	var response interface{}
+// 	err = json.NewDecoder(resp.Body).Decode(&response)
+// 	if err != nil {
+// 		FailOnError(l, err, "Error when trying to decode GET response")
+// 		return c.JSON(resp.StatusCode, response)
+// 	}
+
+// 	var ingSl []services.IngredientsShoppingList
+// 	// Convert the response interface to a Recipes array
+// 	recipeJson, _ := json.Marshal(response)
+// 	err = json.Unmarshal(recipeJson, &ingSl)
+// 	if err != nil {
+// 		FailOnError(l, err, "Error when trying to parse recipe response")
+// 		return NewInternalServerError(err)
+// 	}
+
+// 	// Navigate through the ingredients and get the recipe ID
+// 	rSL := []RecipeShoppingList{}
+
+// 	// First convert the array of Ing to an ingredient response
+
+// 	ings := []Ingredient{}
+
+// 	for _, ing := range ingSl {
+
+// 		// check each quantities in the recipe
+
+// 		for _, quantity := range ing.Quantities {
+// 			if quantity.RecipeId != "" {
+
+// 				// Check if the recipe is already in the list
+// 				found := false
+// 				for _, r := range rSL {
+// 					if r.ID == quantity.RecipeId {
+// 						found = true
+// 						break
+// 					}
+// 				}
+// 				// If found, skip to next ingredient
+
+// 				if !found {
+// 					// Query the recipe MS to retrieve the recipe with the given ID
+// 					recipeUrl := api.conf.RecipeMSURL + "/recipe/" + quantity.RecipeId
+// 					resp, err := http.Get(recipeUrl)
+// 					if err != nil {
+// 						FailOnError(l, err, "Error when trying to query recipe MS")
+// 						return NewInternalServerError(err)
+// 					}
+// 					defer resp.Body.Close()
+
+// 					if resp.StatusCode != http.StatusOK {
+// 						FailOnError(l, err, "Error when trying to query recipe MS")
+// 						return NewInternalServerError(err)
+// 					}
+
+// 					// Parse the response body into a Recipe object
+// 					var recipe services.Recipe
+// 					err = json.NewDecoder(resp.Body).Decode(&recipe)
+// 					if err != nil {
+// 						FailOnError(l, err, "Error when trying to parse recipe response")
+// 						break
+// 					}
+
+// 					recipeResponse := RecipeShoppingList{
+// 						ID:          recipe.ID,
+// 						Name:        recipe.Name,
+// 						Ingredients: []Ingredient{},
+// 					}
+
+// 					rSL = append(rSL, recipeResponse)
+// 				}
+
+// 			}
+// 		}
+
+// 		// Query the Catalog MS to the corresponding ingredient for the recipe
+// 		ingredientUrl := api.conf.CatalogMSURL + "/ingredient/" + ing.ID
+// 		resp, err := http.Get(ingredientUrl)
+// 		if err != nil {
+// 			FailOnError(l, err, "Error when trying to query catalog MS")
+// 			return NewInternalServerError(err)
+// 		}
+// 		defer resp.Body.Close()
+
+// 		if resp.StatusCode != http.StatusOK {
+// 			FailOnError(l, err, "Error when requesting the ingredient from catalog MS")
+// 			break
+// 		}
+
+// 		var ingredientCatalog services.IngredientCatalog
+// 		err = json.NewDecoder(resp.Body).Decode(&ingredientCatalog)
+// 		if err != nil {
+// 			FailOnError(l, err, "Error when trying to parse ingredient response")
+// 			break
+// 		}
+
+// 		ingredient := Ingredient{
+// 			ID:   ingredientCatalog.ID,
+// 			Name: ingredientCatalog.Name,
+// 			Type: ingredientCatalog.Type,
+// 		}
+
+// 		// For each quantity, add the ingredient to the recipe
+// 		for _, quantity := range ing.Quantities {
+// 			ingredient.Amount = quantity.Amount
+// 			ingredient.Unit = quantity.Unit
+// 			if quantity.RecipeId != "" {
+// 				// Search for the recipe in the list
+// 				for i, r := range rSL {
+// 					if r.ID == quantity.RecipeId {
+// 						rSL[i].Ingredients = append(rSL[i].Ingredients, ingredient)
+// 					}
+// 				}
+// 			} else {
+// 				ings = append(ings, ingredient)
+// 			}
+// 		}
+
+// 	}
+
+// 	// Navigate trou the list to have the recipeIDs
+// 	sL := ShoppingList{
+// 		Recipes:     rSL,
+// 		Ingredients: ings,
+// 	}
+// 	return c.JSON(resp.StatusCode, sL)
+// }
 
 func (api *ApiHandler) deleteIngredientForRecipeFromShoppingList(c echo.Context) error {
 	ingredientId := c.Param("id")
