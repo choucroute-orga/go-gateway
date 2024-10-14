@@ -5,17 +5,21 @@ import (
 
 	"github.com/labstack/echo/v4"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type ApiHandler struct {
-	amqp *amqp.Connection
-	conf *configuration.Configuration
+	amqp   *amqp.Connection
+	conf   *configuration.Configuration
+	tracer trace.Tracer
 }
 
 func NewApiHandler(amqp *amqp.Connection, conf *configuration.Configuration) *ApiHandler {
 	handler := ApiHandler{
-		amqp: amqp,
-		conf: conf,
+		amqp:   amqp,
+		conf:   conf,
+		tracer: otel.Tracer(conf.OtelServiceName),
 	}
 	return &handler
 }
@@ -45,6 +49,7 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	shopping_list := v1.Group("/shopping-list")
 	shopping_list.GET("", api.getShoppingList)
 	shopping_list.POST("/recipe/:id", api.postIngredientsForRecipeToShoppingList)
+	shopping_list.POST("/ingredient/:id", api.postIngredientToShoppingList)
 	shopping_list.DELETE("/ingredient/:id", api.deleteIngredientForRecipeFromShoppingList)
 	shopping_list.DELETE("/recipe/:recipe_id/ingredient/:id", api.deleteIngredientForRecipeFromShoppingList)
 

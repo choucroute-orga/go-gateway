@@ -12,7 +12,7 @@ type postIngredientInventoryRequest struct {
 	UserID string  `json:"userId" validate:"required"`
 	Name   string  `json:"name" validate:"omitempty"`
 	Amount float64 `json:"amount" validate:"required,min=0.1"`
-	Unit   string  `json:"unit" validate:"oneof=i is cs tbsp tsp g kg ml l"`
+	Unit   string  `json:"unit" validate:"oneof=i is cup tbsp tsp g kg ml l"`
 }
 
 type UnitRequest string
@@ -26,7 +26,7 @@ const (
 	UnitL     UnitRequest = "l"
 	UnitTsp   UnitRequest = "tsp"
 	UnitTbsp  UnitRequest = "tbsp"
-	UnitCs    UnitRequest = "cs"
+	UnitCup   UnitRequest = "cup"
 )
 
 type putIngredientInventoryRequest struct {
@@ -34,10 +34,17 @@ type putIngredientInventoryRequest struct {
 	UserID string      `json:"userId" validate:"required"`
 	Name   string      `json:"name" validate:"omitempty"`
 	Amount float64     `json:"amount" validate:"required,min=0.1"`
-	Unit   UnitRequest `json:"unit" validate:"oneof=i is cs tbsp tsp g kg ml l"`
+	Unit   UnitRequest `json:"unit" validate:"oneof=i is cup tbsp tsp g kg ml l"`
 }
 
 type deleteIngredientInventoryRequest struct {
 	ID     string `param:"id" validate:"required"`
 	UserID string `param:"userId" validate:"required"`
+}
+
+type postIngredientShoppingListRequest struct {
+	ID     string      `param:"id" validate:"required"`
+	UserID string      `json:"userId" validate:"required"`
+	Amount float64     `json:"amount" validate:"required,min=0.1"`
+	Unit   UnitRequest `json:"unit" validate:"oneof=i is cup tbsp tsp g kg ml l"`
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"gateway/api"
 	"gateway/configuration"
@@ -15,6 +16,7 @@ var logger = logrus.WithFields(logrus.Fields{
 })
 
 func main() {
+	configuration.SetupLogging()
 	logger.Info("Choucroute API Gateway Starting...")
 
 	conf := configuration.New()
@@ -26,11 +28,19 @@ func main() {
 	h := api.NewApiHandler(amqp, conf)
 
 	h.Register(v1, conf)
-	r.Logger.Fatal(r.Start(fmt.Sprintf("%v:%v", conf.ListenAddress, conf.ListenPort)))
+	tp := api.InitOtel()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	defer func() {
+		cancel()
+		if err := tp.Shutdown(ctx); err != nil {
+			logger.WithError(err).Error("Error shutting down tracer provider")
+		}
 		if err := amqp.Close(); err != nil {
-			panic(err)
+			logger.WithError(err).Error("Error closing amqp connection")
 		}
 	}()
+
+	r.Logger.Fatal(r.Start(fmt.Sprintf("%v:%v", conf.ListenAddress, conf.ListenPort)))
+
 }

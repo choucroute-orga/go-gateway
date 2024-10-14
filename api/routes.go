@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/codes"
 )
 
 var logger = logrus.WithField("context", "api/routes")
@@ -489,6 +490,45 @@ func (api *ApiHandler) deleteRecipe(c echo.Context) error {
 	}
 
 	return c.JSON(resp.StatusCode, response)
+}
+
+func (api *ApiHandler) postIngredientToShoppingList(c echo.Context) error {
+	context, span := api.tracer.Start(c.Request().Context(), "api.postIngredientToShoppingList")
+	defer span.End()
+	l := logger.WithContext(context).WithField("request", "postIngredientToShoppingList")
+
+	// Bind the request body to a postIngredientShoppingListRequest object
+	var request postIngredientShoppingListRequest
+	if err := c.Bind(&request); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Request binding failed")
+		FailOnError(l, err, "Request binding failed")
+		return NewBadRequestError(err)
+	}
+	if err := c.Validate(&request); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Request validation failed")
+		FailOnError(l, err, "Request validation failed")
+		return NewBadRequestError(err)
+	}
+	ingredientInventory := messages.IngredientShoppingList{
+		ID:     request.ID,
+		UserID: request.UserID,
+		Amount: request.Amount,
+		Unit:   string(request.Unit),
+	}
+	publishCtx, publishSpan := api.tracer.Start(context, "messages.PublishInventoryShoppingListQueue")
+	l.WithContext(publishCtx).WithField("ingredientInventory", ingredientInventory).Debug("Publishing ingredient to shopping list")
+	err := messages.PublishInventoryShoppingListQueue(l, api.amqp, ingredientInventory)
+	publishSpan.End()
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Publishing ingredient to shopping list failded")
+		FailOnError(l, err, "Error when trying to publish ingredient to shopping list")
+		return NewInternalServerError(err)
+	}
+
+	return c.JSON(http.StatusCreated, ingredientInventory)
 }
 
 func (api *ApiHandler) postIngredientsForRecipeToShoppingList(c echo.Context) error {

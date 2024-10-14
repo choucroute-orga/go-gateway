@@ -24,6 +24,7 @@ type Configuration struct {
 	RabbitURL           string
 	TranslateValidation bool
 	JWTSecret           string
+	OtelServiceName     string
 }
 
 func New() *Configuration {
@@ -60,6 +61,13 @@ func New() *Configuration {
 	}
 
 	conf.JWTSecret = os.Getenv("JWT_SECRET")
+
+	conf.OtelServiceName = os.Getenv("OTEL_SERVICE_NAME")
+
+	if len(conf.OtelServiceName) < 1 {
+		logger.Error("OTEL_SERVICE_NAME is required")
+		os.Exit(1)
+	}
 
 	return &conf
 }
