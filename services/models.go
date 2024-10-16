@@ -1,5 +1,7 @@
 package services
 
+import "time"
+
 // Here are saved the models of the MS API
 
 // ---           --- //
@@ -91,4 +93,24 @@ type IngredientsShoppingList struct {
 		Unit     string  `json:"unit" validate:"oneof=i is cs unit l ml mg tbsp tsp g kg"`
 		RecipeId string  `json:"recipe_id" validate:"omitempty"`
 	} `json:"quantities" validate:"required,dive,required"`
+}
+
+type CatalogShop struct {
+	ID       string `json:"id" validate:"required"`
+	Name     string `json:"name" validate:"required,min=3"`
+	Location struct {
+		Street     string `json:"street" validate:"required"`
+		PostalCode string `json:"postalCode" validate:"required"`
+		Country    string `json:"country" validate:"required"`
+		City       string `json:"city" validate:"required"`
+	} `json:"location" validate:"required"`
+}
+
+type CatalogPrice struct {
+	ProductID string    `json:"productId" validate:"required"`
+	ShopID    string    `json:"shopId" validate:"required"`
+	Price     float64   `json:"price" validate:"required"`
+	Devise    string    `json:"devise" validate:"required,oneof=EUR USD"`
+	CreatedAt time.Time `json:"createdAt" validate:"required"`
+	UpdatedAt time.Time `json:"updatedAt" validate:"required"`
 }

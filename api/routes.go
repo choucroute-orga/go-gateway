@@ -9,6 +9,7 @@ import (
 	"gateway/messages"
 	"gateway/services"
 	"net/http"
+	"reflect"
 	"sync"
 
 	"github.com/labstack/echo/v4"
@@ -869,6 +870,187 @@ func (api *ApiHandler) getIngredientFromCatalog(ctx context.Context, ingredientI
 	}
 
 	return &ingredientCatalog, nil
+}
+
+func (api *ApiHandler) createShop(c echo.Context) error {
+	s := simpleRequest{
+		Context:  &c,
+		Method:   "createShop",
+		Url:      fmt.Sprintf("%s/shop", api.conf.CatalogMSURL),
+		HttpVerb: http.MethodPost,
+		Request:  new(InsertShopRequest),
+		Response: new(services.CatalogShop),
+	}
+	return api.executeSimpleRequest(&s)
+}
+
+func (api *ApiHandler) updateShop(c echo.Context) error {
+	s := simpleRequest{
+		Context:  &c,
+		Method:   "updateShop",
+		Url:      fmt.Sprintf("%s/shop/%s", api.conf.CatalogMSURL, c.Param("id")),
+		HttpVerb: http.MethodPut,
+		Request:  new(UpdateShopRequest),
+		Response: new(services.CatalogShop),
+	}
+	return api.executeSimpleRequest(&s)
+}
+func (api *ApiHandler) getShop(c echo.Context) error {
+	s := simpleRequest{
+		Context:  &c,
+		Method:   "getShop",
+		Url:      fmt.Sprintf("%s/shop/%s", api.conf.CatalogMSURL, c.Param("id")),
+		HttpVerb: http.MethodGet,
+		Request:  new(IDParam),
+		Response: new(services.CatalogShop),
+	}
+	return api.executeSimpleRequest(&s)
+}
+func (api *ApiHandler) getShops(c echo.Context) error {
+	s := simpleRequest{
+		Context:  &c,
+		Method:   "getShops",
+		Url:      fmt.Sprintf("%s/shop", api.conf.CatalogMSURL),
+		HttpVerb: http.MethodGet,
+		Request:  nil,
+		Response: new([]services.CatalogShop),
+	}
+	return api.executeSimpleRequest(&s)
+}
+func (api *ApiHandler) deleteShop(c echo.Context) error {
+	s := simpleRequest{
+		Context:  &c,
+		Method:   "deleteShop",
+		Url:      fmt.Sprintf("%s/shop/%s", api.conf.CatalogMSURL, c.Param("id")),
+		HttpVerb: http.MethodDelete,
+		Request:  new(IDParam),
+		Response: nil,
+	}
+	return api.executeSimpleRequest(&s)
+}
+
+//TODO Add query param to retrieve more prices
+func (api *ApiHandler) getPrices(c echo.Context) error {
+	s:= simpleRequest{
+		Context: &c,
+		Method: "getPrices",
+		Url: fmt.Sprintf("%s/price", api.conf.CatalogMSURL),
+		HttpVerb: http.MethodGet,
+		Request: nil,
+		Response: new([]services.CatalogPrice),
+	}
+	return api.executeSimpleRequest(&s)
+}
+
+type simpleRequest struct {
+	Context  *echo.Context
+	Method   string // Used for tracing, indicate, the name of function that made the call
+	Url      string
+	HttpVerb string
+	Request  any
+	Response any
+}
+
+func (api *ApiHandler) executeSimpleRequest(s *simpleRequest) error {
+
+	c := s.Context
+	httpVerb := s.HttpVerb
+	url := s.Url
+
+	ctx, span := api.tracer.Start((*c).Request().Context(), "api."+s.Method)
+	defer span.End()
+	l := logger.WithContext(ctx).WithField("request", s.Method)
+
+	if s.Request != nil {
+		l = l.WithField("requestObject", s.Request)
+		// Debug the type and the value of the request
+		l.Debug("Trying to bind and validate the Request")
+		if err := (*c).Bind(s.Request); err != nil {
+			return NewBadRequestError(err)
+		}
+		if err := (*c).Validate(s.Request); err != nil {
+			return NewUnprocessableEntityError(err)
+		}
+	}
+
+	encodedRequest, err := json.Marshal(s.Request)
+	if err != nil {
+		FailOnError(l, err, "Error when trying to Marshal request")
+		return NewInternalServerError(err)
+	}
+
+	// Send the object to the catalog MS
+	req, err := http.NewRequest(httpVerb, url, bytes.NewBuffer(encodedRequest))
+	req.Header.Set("Content-Type", "application/json")
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Error when trying to create "+httpVerb+" request")
+		FailOnError(l, err, fmt.Sprintf("Error when trying to create %v  request", httpVerb))
+		return NewInternalServerError(err)
+	}
+	reqCtx, reqSpan := api.tracer.Start(ctx, fmt.Sprintf("%v.%v", s.Method, "http.DefaultClient.Do"))
+	l = l.WithContext(reqCtx)
+	resp, err := http.DefaultClient.Do(req)
+
+	if resp != nil {
+		l = l.WithFields(logrus.Fields{
+			"response": resp,
+			"status":   resp.StatusCode,
+		})
+		reqSpan.SetAttributes(
+			attribute.String("responseStatus", resp.Status),
+			attribute.Int("responseStatusCode", resp.StatusCode),
+		)
+	}
+
+	if err != nil {
+		errMsg := fmt.Sprintf("Error when trying to %v request to %v", httpVerb, url)
+		reqSpan.RecordError(err)
+		reqSpan.SetStatus(codes.Error, errMsg)
+		FailOnError(l, err, errMsg)
+		reqSpan.End()
+		return NewInternalServerError(err)
+	}
+	reqSpan.End()
+	l = l.WithContext(ctx)
+
+	defer resp.Body.Close()
+	var response interface{}
+
+	// Only append the response if the response is not nil and the status code is in the 2xx range
+	if s.Response != nil && resp.StatusCode >= http.StatusOK && resp.StatusCode < 300 {
+		response = s.Response
+	} else {
+		response = new(interface{})
+	}
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		v := &ValidationErrors{}
+		response = v
+	}
+
+	if resp.StatusCode == http.StatusNoContent {
+		return (*c).NoContent(http.StatusNoContent)
+	}
+
+	l.WithFields(logrus.Fields{
+		"responseValue": reflect.ValueOf(response),
+		"responseType":  reflect.TypeOf(response),
+		"responseKind":  reflect.TypeOf(response).Kind(),
+	}).Debug(
+		fmt.Sprintf("Response received from %v function at %v", s.Method, url),
+	)
+	l.WithFields(logrus.Fields{})
+
+	err = json.NewDecoder(resp.Body).Decode(response)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Error when trying to decode response")
+		FailOnError(l, err, "Error when trying to decode response")
+		return NewInternalServerError(err)
+	}
+
+	return (*c).JSON(resp.StatusCode, response)
 }
 
 func (api *ApiHandler) postPriceCatalog(c echo.Context) error {

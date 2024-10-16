@@ -2,6 +2,7 @@ package api
 
 import (
 	"gateway/configuration"
+	"gateway/validation"
 
 	"github.com/labstack/echo/v4"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -10,16 +11,18 @@ import (
 )
 
 type ApiHandler struct {
-	amqp   *amqp.Connection
-	conf   *configuration.Configuration
-	tracer trace.Tracer
+	amqp       *amqp.Connection
+	conf       *configuration.Configuration
+	validation *validation.Validation
+	tracer     trace.Tracer
 }
 
 func NewApiHandler(amqp *amqp.Connection, conf *configuration.Configuration) *ApiHandler {
 	handler := ApiHandler{
-		amqp:   amqp,
-		conf:   conf,
-		tracer: otel.Tracer(conf.OtelServiceName),
+		amqp:       amqp,
+		conf:       conf,
+		validation: validation.New(conf),
+		tracer:     otel.Tracer(conf.OtelServiceName),
 	}
 	return &handler
 }
@@ -60,6 +63,14 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	inventory.PUT("/:id", api.putInventory)
 	inventory.DELETE("/:id/user/:userId", api.deleteInventory)
 
+	shop := v1.Group("/shop")
+	shop.POST("", api.createShop)
+	shop.GET("", api.getShops)
+	shop.GET("/:id", api.getShop)
+	shop.PUT("/:id", api.updateShop)
+	shop.DELETE("/:id", api.deleteShop)
+
 	price := v1.Group("/price")
 	price.POST("", api.postPriceCatalog)
+	price.GET("", api.getPrices)
 }

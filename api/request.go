@@ -70,3 +70,23 @@ func NewAddPriceMessage(price *postPriceCatalogRequest) *messages.AddPriceCatalo
 		Date:      time.Now(),
 	}
 }
+
+type InsertShopRequest struct {
+	ID       string `json:"id" validate:"omitempty"`
+	Name     string `json:"name" validate:"required,min=3"`
+	Location struct {
+		Street     string `json:"street" validate:"required"`
+		PostalCode string `json:"postalCode" validate:"required"`
+		Country    string `json:"country" validate:"required"`
+		City       string `json:"city" validate:"required"`
+	} `json:"location" validate:"required"`
+}
+
+type IDParam struct {
+	ID string `param:"id" validate:"required"`
+}
+
+type UpdateShopRequest struct {
+	ID                string `param:"id" validate:"required"`
+	InsertShopRequest `json:",inline"`
+}
