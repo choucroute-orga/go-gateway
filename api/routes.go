@@ -871,6 +871,37 @@ func (api *ApiHandler) getIngredientFromCatalog(ctx context.Context, ingredientI
 	return &ingredientCatalog, nil
 }
 
+func (api *ApiHandler) postPriceCatalog(c echo.Context) error {
+	ctx, span := api.tracer.Start(c.Request().Context(), "api.getIngredientFromCatalog")
+	defer span.End()
+	l := logger.WithContext(ctx).WithField("request", "postPriceCatalog")
+
+	var price postPriceCatalogRequest
+
+	if err := c.Bind(&price); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Request binding failed")
+		FailOnError(l, err, "Request binding failed")
+		return NewBadRequestError(err)
+	}
+
+	if err := c.Validate(&price); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Request validation failed")
+		FailOnError(l, err, "Request validation failed")
+		return NewUnprocessableEntityError(err)
+	}
+
+	addPrice := NewAddPriceMessage(&price)
+	if err := messages.PublishPriceCatalogQueue(l, api.amqp, addPrice); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Publishing message failed")
+		FailOnError(l, err, "Publishing message failed")
+		return NewInternalServerError(err)
+	}
+	return c.JSON(http.StatusCreated, price)
+}
+
 // func (api *ApiHandler) getShoppingList(c echo.Context) error {
 
 // 	l := logger.WithField("request", "getShoppingList")

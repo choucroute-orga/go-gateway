@@ -1,5 +1,10 @@
 package api
 
+import (
+	"gateway/messages"
+	"time"
+)
+
 type postIngredientCatalogRequest struct {
 	ID       string `json:"id" validate:"omitempty"`
 	Name     string `json:"name" validate:"required"`
@@ -47,4 +52,21 @@ type postIngredientShoppingListRequest struct {
 	UserID string      `json:"userId" validate:"required"`
 	Amount float64     `json:"amount" validate:"required,min=0.1"`
 	Unit   UnitRequest `json:"unit" validate:"oneof=i is cup tbsp tsp g kg ml l"`
+}
+
+type postPriceCatalogRequest struct {
+	ProductID string  `json:"productId" validate:"required"`
+	ShopID    string  `json:"shopId" validate:"required"`
+	Price     float64 `json:"price" validate:"required,min=0.01"`
+	Devise    string  `json:"devise" validate:"required,oneof=EUR USD"`
+}
+
+func NewAddPriceMessage(price *postPriceCatalogRequest) *messages.AddPriceCatalog {
+	return &messages.AddPriceCatalog{
+		ProductID: price.ProductID,
+		ShopID:    price.ShopID,
+		Price:     price.Price,
+		Devise:    price.Devise,
+		Date:      time.Now(),
+	}
 }

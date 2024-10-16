@@ -59,4 +59,7 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	inventory.POST("", api.postInventory)
 	inventory.PUT("/:id", api.putInventory)
 	inventory.DELETE("/:id/user/:userId", api.deleteInventory)
+
+	price := v1.Group("/price")
+	price.POST("", api.postPriceCatalog)
 }
