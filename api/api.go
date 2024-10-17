@@ -4,21 +4,26 @@ import (
 	"gateway/configuration"
 	"gateway/validation"
 
+	"github.com/golang-jwt/jwt/v5"
+	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+	"gorm.io/gorm"
 )
 
 type ApiHandler struct {
 	amqp       *amqp.Connection
+	pg         *gorm.DB
 	conf       *configuration.Configuration
 	validation *validation.Validation
 	tracer     trace.Tracer
 }
 
-func NewApiHandler(amqp *amqp.Connection, conf *configuration.Configuration) *ApiHandler {
+func NewApiHandler(pg *gorm.DB, amqp *amqp.Connection, conf *configuration.Configuration) *ApiHandler {
 	handler := ApiHandler{
+		pg:         pg,
 		amqp:       amqp,
 		conf:       conf,
 		validation: validation.New(conf),
@@ -73,4 +78,18 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	price := v1.Group("/price")
 	price.POST("", api.postPriceCatalog)
 	price.GET("", api.getPrices)
+
+	app := v1.Group("/api")
+	app.POST("/login", api.login)
+	app.POST("/signup", api.signup)
+
+	config := echojwt.Config{
+		NewClaimsFunc: func(c echo.Context) jwt.Claims {
+			return new(jwtCustomClaims)
+		},
+		SigningKey: []byte(conf.JWTSecret),
+	}
+	app.Use(echojwt.WithConfig(config))
+	app.POST("/logout", api.logout)
+	app.GET("/restricted", api.extractUser(api.restricted))
 }

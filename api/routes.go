@@ -48,22 +48,41 @@ func (api *ApiHandler) getServicesList() []string {
 func (api *ApiHandler) getReadyStatus(c echo.Context) error {
 	l := logger.WithField("request", "getReadyStatus")
 
+	status := ReadyStatus
+	httpStatus := http.StatusOK
+
+	db, err := api.pg.DB()
+	if err != nil {
+		FailOnError(l, err, "Unable to access the DB to check connection.")
+		status = NotReadyStatus
+		httpStatus = http.StatusServiceUnavailable
+	}
+
+	err = db.Ping()
+	if err != nil {
+		FailOnError(l, err, "Error when trying to ping database ")
+		status = NotReadyStatus
+		httpStatus = http.StatusServiceUnavailable
+	}
+
 	// Request the health status of each MS
 	for _, msUrl := range api.getServicesList() {
 		resp, err := http.Get(msUrl + "/health/ready")
 		if err != nil {
 			FailOnError(l, err, "Error when trying to query MS "+msUrl)
-			return c.JSON(http.StatusServiceUnavailable, NewHealthResponse(NotReadyStatus))
+			status = NotReadyStatus
+			httpStatus = http.StatusServiceUnavailable
 		}
 
 		// Otherwise, check if the MS is ready
 		if resp.StatusCode != http.StatusOK {
 			FailOnError(l, err, "Service on "+msUrl+" is not ready")
-			return c.JSON(http.StatusServiceUnavailable, NewHealthResponse(NotReadyStatus))
+			status = NotReadyStatus
+			httpStatus = http.StatusServiceUnavailable
 		}
 	}
 
-	return c.JSON(http.StatusOK, NewHealthResponse(ReadyStatus))
+	return c.JSON(httpStatus, NewHealthResponse(status))
 }
 
 func (api *ApiHandler) postIngredientCatalog(c echo.Context) error {
@@ -929,14 +948,14 @@ func (api *ApiHandler) deleteShop(c echo.Context) error {
 	return api.executeSimpleRequest(&s)
 }
 
-//TODO Add query param to retrieve more prices
+// TODO Add query param to retrieve more prices
 func (api *ApiHandler) getPrices(c echo.Context) error {
-	s:= simpleRequest{
-		Context: &c,
-		Method: "getPrices",
-		Url: fmt.Sprintf("%s/price", api.conf.CatalogMSURL),
+	s := simpleRequest{
+		Context:  &c,
+		Method:   "getPrices",
+		Url:      fmt.Sprintf("%s/price", api.conf.CatalogMSURL),
 		HttpVerb: http.MethodGet,
-		Request: nil,
+		Request:  nil,
 		Response: new([]services.CatalogPrice),
 	}
 	return api.executeSimpleRequest(&s)

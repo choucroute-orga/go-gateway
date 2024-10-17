@@ -15,7 +15,14 @@ type Configuration struct {
 	ListenPort          string
 	ListenAddress       string
 	ListenRoute         string
-	LogLevel            string
+	LogLevel            logrus.Level
+	DBName              string
+	DBUser              string
+	DBPassword          string
+	DBPort              string
+	DBHost              string
+	DBTimezone          string
+	DBSSLMode           string
 	RecipeMSURL         string
 	CatalogMSURL        string
 	ShoppingListMSURL   string
@@ -37,14 +44,32 @@ func New() *Configuration {
 		logrus.WithFields(logrus.Fields{
 			"logLevel": logLevel,
 		}).Info("logLevel not conform, use `info` ")
-		conf.LogLevel = "info"
-	} else {
-		conf.LogLevel = logLevel
+		conf.LogLevel = logrus.InfoLevel
+	}
+
+	if logLevel == "debug" {
+		conf.LogLevel = logrus.DebugLevel
+	} else if logLevel == "error" {
+		conf.LogLevel = logrus.ErrorLevel
+	} else if logLevel == "info" {
+		conf.LogLevel = logrus.InfoLevel
+	} else if logLevel == "trace" {
+		conf.LogLevel = logrus.TraceLevel
+	} else if logLevel == "warn" {
+		conf.LogLevel = logrus.WarnLevel
 	}
 
 	conf.ListenPort = os.Getenv("API_PORT")
 	conf.ListenAddress = os.Getenv("API_ADDRESS")
 	conf.ListenRoute = os.Getenv("API_ROUTE")
+
+	conf.DBHost = os.Getenv("POSTGRESQL_HOST")
+	conf.DBName = os.Getenv("POSTGRESQL_DATABASE")
+	conf.DBPort = os.Getenv("POSTGRESQL_PORT")
+	conf.DBUser = os.Getenv("POSTGRESQL_USERNAME")
+	conf.DBPassword = os.Getenv("POSTGRESQL_PASSWORD")
+	conf.DBTimezone = os.Getenv("POSTGRESQL_TIMEZONE")
+	conf.DBSSLMode = "disable"
 
 	conf.RecipeMSURL = os.Getenv("RECIPE_MS_URL")
 	conf.CatalogMSURL = os.Getenv("CATALOG_MS_URL")
@@ -61,6 +86,11 @@ func New() *Configuration {
 	}
 
 	conf.JWTSecret = os.Getenv("JWT_SECRET")
+
+	if len(conf.JWTSecret) < 1 {
+		logger.Error("JWT_SECRET is required")
+		os.Exit(1)
+	}
 
 	conf.OtelServiceName = os.Getenv("OTEL_SERVICE_NAME")
 

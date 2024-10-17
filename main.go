@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"gateway/api"
 	"gateway/configuration"
+	"gateway/db"
 	"gateway/messages"
 	"gateway/validation"
+	"os"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,11 +23,23 @@ func main() {
 
 	conf := configuration.New()
 
+	pg, err := db.New(conf)
+
+	if err != nil {
+		logger.Fatal(err)
+		os.Exit(1)
+	}
+
+	err = db.AutoMigrate(pg)
+
+	if err != nil {
+		logger.Error(err)
+	}
 	val := validation.New(conf)
 	r := api.New(val)
 	v1 := r.Group(conf.ListenRoute)
 	amqp := messages.New(conf)
-	h := api.NewApiHandler(amqp, conf)
+	h := api.NewApiHandler(pg, amqp, conf)
 
 	h.Register(v1, conf)
 	tp := api.InitOtel()

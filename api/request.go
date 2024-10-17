@@ -90,3 +90,16 @@ type UpdateShopRequest struct {
 	ID                string `param:"id" validate:"required"`
 	InsertShopRequest `json:",inline"`
 }
+
+type UserCreationRequest struct {
+	Email     string `json:"email" validate:"required,email"`
+	Username  string `json:"username" validate:"required,min=4"`
+	Password  string `json:"password" validate:"required,min=8"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+}
+
+type UserConnectionRequest struct {
+	Username string `json:"username" validate:"required"`
+	Password string `json:"password" validate:"required"`
+}

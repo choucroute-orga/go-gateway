@@ -10,5 +10,15 @@ services:
     volumes:
       - "rabbitmq-data:/var/lib/rabbitmq"
 
+  postgres:
+    image: "bitnami/postgresql:latest"
+    container_name: "postgres"
+    env_file: .env
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - "postgres-data:/var/lib/postgresql/data"
+
 volumes:
   rabbitmq-data:
+  postgres-data:
