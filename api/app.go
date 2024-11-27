@@ -36,10 +36,11 @@ func (api *ApiHandler) login(c echo.Context) error {
 		return NewNotFoundError(errors.New("username or password incorrect"))
 	}
 
-	expirationDate := time.Now().Add(time.Hour * 24 * 30) // 30 days
+	expirationDate := time.Now().Add(time.Second * 60 * 24 * 30) // 30 days
 	// Set custom claims
 	claims := &jwtCustomClaims{
 		user.Username,
+		user.Email,
 		user.ID,
 		jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationDate),
@@ -64,7 +65,11 @@ func (api *ApiHandler) login(c echo.Context) error {
 	db.UpsertToken(api.pg, tokenDb)
 
 	return c.JSON(http.StatusOK, echo.Map{
-		"token": t,
+		"token":      t,
+		"email":      user.Email,
+		"username":   user.Username,
+		"id":         user.ID,
+		"expiration": expirationDate,
 	})
 }
 

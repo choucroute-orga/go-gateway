@@ -2,8 +2,12 @@ package api
 
 import (
 	"gateway/configuration"
+	"gateway/graph"
 	"gateway/validation"
+	"net/http"
 
+	"github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/golang-jwt/jwt/v5"
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
@@ -16,23 +20,47 @@ import (
 type ApiHandler struct {
 	amqp       *amqp.Connection
 	pg         *gorm.DB
+	graphql    *handler.Server
 	conf       *configuration.Configuration
 	validation *validation.Validation
 	tracer     trace.Tracer
 }
 
 func NewApiHandler(pg *gorm.DB, amqp *amqp.Connection, conf *configuration.Configuration) *ApiHandler {
-	handler := ApiHandler{
+	resolver := graph.NewResolver(conf.RecipeMSURL)
+	graphqlHandler := handler.NewDefaultServer(
+		graph.NewExecutableSchema(
+			graph.Config{Resolvers: resolver},
+		),
+	)
+	return &ApiHandler{
 		pg:         pg,
 		amqp:       amqp,
 		conf:       conf,
 		validation: validation.New(conf),
+		graphql:    graphqlHandler,
 		tracer:     otel.Tracer(conf.OtelServiceName),
 	}
-	return &handler
 }
 
 func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuration) {
+
+	// A basic GET request that response WELCOME in a JSON format
+	v1.GET("", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"message": "WELCOME"})
+	})
+
+	playgroundHandler := playground.Handler("GraphQL", "/query")
+
+	v1.POST("/query", func(c echo.Context) error {
+		api.graphql.ServeHTTP(c.Response(), c.Request())
+		return nil
+	})
+
+	v1.GET("/playground", func(c echo.Context) error {
+		playgroundHandler.ServeHTTP(c.Response(), c.Request())
+		return nil
+	})
 
 	health := v1.Group("/health")
 	health.GET("/alive", api.getAliveStatus)
@@ -42,6 +70,7 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	recipes := v1.Group("/recipe")
 	recipes.GET("", api.getRecipes)
 	recipes.GET("/:id", api.getRecipeByID)
+	recipes.GET("/user/:id", api.getRecipesByUser)
 	recipes.GET("/ingredient/:id", api.getRecipesByIngredientID)
 	recipes.POST("", api.postRecipe)
 	recipes.DELETE("/:id", api.deleteRecipe)

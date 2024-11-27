@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gateway/db"
 	"gateway/messages"
 	"gateway/services"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"gorm.io/gorm"
 )
 
 var logger = logrus.WithField("context", "api/routes")
@@ -957,6 +959,33 @@ func (api *ApiHandler) getPrices(c echo.Context) error {
 		HttpVerb: http.MethodGet,
 		Request:  nil,
 		Response: new([]services.CatalogPrice),
+	}
+	return api.executeSimpleRequest(&s)
+}
+
+// TODO Add visibility to the recipe
+func (api *ApiHandler) getRecipesByUser(c echo.Context) error {
+
+	// Ensure the param id is not empty
+	if c.Param("id") == "" {
+		return NewBadRequestError(errors.New("id param is required"))
+	}
+
+	// Get the user ID
+	if _, err := db.GetUsername(api.pg, c.Param("id")); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return NewNotFoundError(errors.New("user not found"))
+		}
+		return NewInternalServerError(err)
+	}
+
+	s := simpleRequest{
+		Context:  &c,
+		Method:   "getRecipesByUser",
+		Url:      fmt.Sprintf("%s/recipe/user/%s", api.conf.RecipeMSURL, c.Param("id")),
+		HttpVerb: http.MethodGet,
+		Request:  nil,
+		Response: new([]services.Recipe),
 	}
 	return api.executeSimpleRequest(&s)
 }

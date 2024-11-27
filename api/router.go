@@ -59,6 +59,6 @@ func New(validation *validation.Validation) *echo.Echo {
 	e.HideBanner = true
 	e.Pre(middleware.RemoveTrailingSlash())
 	e.Use(middleware.Logger())
-
+	e.Use(middleware.Recover())
 	return e
 }
