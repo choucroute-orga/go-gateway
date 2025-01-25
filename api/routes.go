@@ -963,16 +963,18 @@ func (api *ApiHandler) getPrices(c echo.Context) error {
 	return api.executeSimpleRequest(&s)
 }
 
+// TODO: Recipe author is now the UUID of the user
 // TODO Add visibility to the recipe
 func (api *ApiHandler) getRecipesByUser(c echo.Context) error {
 
 	// Ensure the param id is not empty
-	if c.Param("id") == "" {
-		return NewBadRequestError(errors.New("id param is required"))
+	if c.Param("username") == "" {
+		return NewBadRequestError(errors.New("username param is required"))
 	}
 
 	// Get the user ID
-	if _, err := db.GetUsername(api.pg, c.Param("id")); err != nil {
+	user, err := db.GetUsername(api.pg, c.Param("username"))
+	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return NewNotFoundError(errors.New("user not found"))
 		}
@@ -982,7 +984,7 @@ func (api *ApiHandler) getRecipesByUser(c echo.Context) error {
 	s := simpleRequest{
 		Context:  &c,
 		Method:   "getRecipesByUser",
-		Url:      fmt.Sprintf("%s/recipe/user/%s", api.conf.RecipeMSURL, c.Param("id")),
+		Url:      fmt.Sprintf("%s/recipe/user/%s", api.conf.RecipeMSURL, user.UUID),
 		HttpVerb: http.MethodGet,
 		Request:  nil,
 		Response: new([]services.Recipe),

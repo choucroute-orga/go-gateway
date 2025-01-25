@@ -70,7 +70,7 @@ func (api *ApiHandler) Register(v1 *echo.Group, conf *configuration.Configuratio
 	recipes := v1.Group("/recipe")
 	recipes.GET("", api.getRecipes)
 	recipes.GET("/:id", api.getRecipeByID)
-	recipes.GET("/user/:id", api.getRecipesByUser)
+	recipes.GET("/user/:username", api.getRecipesByUser)
 	recipes.GET("/ingredient/:id", api.getRecipesByIngredientID)
 	recipes.POST("", api.postRecipe)
 	recipes.DELETE("/:id", api.deleteRecipe)

@@ -12,6 +12,7 @@ var logger = logrus.WithFields(logrus.Fields{
 })
 
 type Configuration struct {
+	SecretKey           string
 	ListenPort          string
 	ListenAddress       string
 	ListenRoute         string
@@ -89,6 +90,18 @@ func New() *Configuration {
 
 	if len(conf.JWTSecret) < 1 {
 		logger.Error("JWT_SECRET is required")
+		os.Exit(1)
+	}
+
+	// Secret Key must be 16, 32 or 64 bytes long
+	conf.SecretKey = os.Getenv("SECRET_KEY")
+	if len(conf.SecretKey) < 1 {
+		logger.Error("SECRET_KEY is required")
+		os.Exit(1)
+	}
+
+	if len(conf.SecretKey) != 16 && len(conf.SecretKey) != 32 && len(conf.SecretKey) != 64 {
+		logger.Error("SECRET_KEY must be 16, 32 or 64 bytes long, not ", len(conf.SecretKey))
 		os.Exit(1)
 	}
 

@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"gateway/db"
+	"gateway/utils"
 	"net/http"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -109,12 +111,20 @@ func (api *ApiHandler) signup(c echo.Context) error {
 		return err
 	}
 
+	secretKey, err := utils.GenerateSecretKey()
+	if err != nil {
+		return NewInternalServerError(err)
+	}
 	user := db.User{
 		Email:     u.Email,
 		Username:  u.Username,
 		FirstName: u.FirstName,
 		LastName:  u.FirstName,
 		Password:  string(hashedPassword[:]),
+		UUID:      uuid.NewString(),
+		EncryptionKey: db.EncryptionKey{
+			SecretKey: secretKey,
+		},
 	}
 
 	_, err = db.CreateUser(api.pg, user)
