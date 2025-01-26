@@ -2,6 +2,7 @@ package api
 
 import (
 	"gateway/configuration"
+	"gateway/db"
 	"gateway/graph"
 	"gateway/validation"
 	"net/http"
@@ -14,19 +15,18 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
-	"gorm.io/gorm"
 )
 
 type ApiHandler struct {
 	amqp       *amqp.Connection
-	pg         *gorm.DB
+	dbh        db.DBHdandler
 	graphql    *handler.Server
 	conf       *configuration.Configuration
 	validation *validation.Validation
 	tracer     trace.Tracer
 }
 
-func NewApiHandler(pg *gorm.DB, amqp *amqp.Connection, conf *configuration.Configuration) *ApiHandler {
+func NewApiHandler(dbh db.DBHdandler, amqp *amqp.Connection, conf *configuration.Configuration) *ApiHandler {
 	resolver := graph.NewResolver(conf.RecipeMSURL)
 	graphqlHandler := handler.NewDefaultServer(
 		graph.NewExecutableSchema(
@@ -34,7 +34,7 @@ func NewApiHandler(pg *gorm.DB, amqp *amqp.Connection, conf *configuration.Confi
 		),
 	)
 	return &ApiHandler{
-		pg:         pg,
+		dbh:        dbh,
 		amqp:       amqp,
 		conf:       conf,
 		validation: validation.New(conf),

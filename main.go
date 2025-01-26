@@ -22,19 +22,13 @@ func main() {
 	logger.Info("Choucroute API Gateway Starting...")
 
 	conf := configuration.New()
-
-	pg, err := db.New(conf)
+	pg, err := db.NewSurrealDBHandler(conf)
 
 	if err != nil {
 		logger.Fatal(err)
 		os.Exit(1)
 	}
 
-	err = db.AutoMigrate(pg)
-
-	if err != nil {
-		logger.Error(err)
-	}
 	val := validation.New(conf)
 	r := api.New(val)
 	v1 := r.Group(conf.ListenRoute)
@@ -55,6 +49,7 @@ func main() {
 		}
 	}()
 
+	logger.Info("Choucroute API Gateway Started")
 	r.Logger.Fatal(r.Start(fmt.Sprintf("%v:%v", conf.ListenAddress, conf.ListenPort)))
 
 }

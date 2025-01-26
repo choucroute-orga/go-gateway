@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gateway/db"
 	"gateway/messages"
 	"gateway/services"
 	"net/http"
@@ -53,16 +52,10 @@ func (api *ApiHandler) getReadyStatus(c echo.Context) error {
 	status := ReadyStatus
 	httpStatus := http.StatusOK
 
-	db, err := api.pg.DB()
-	if err != nil {
-		FailOnError(l, err, "Unable to access the DB to check connection.")
-		status = NotReadyStatus
-		httpStatus = http.StatusServiceUnavailable
-	}
+	err := api.dbh.Ping()
 
-	err = db.Ping()
 	if err != nil {
-		FailOnError(l, err, "Error when trying to ping database ")
+		FailOnError(l, err, "Error when trying to ping database")
 		status = NotReadyStatus
 		httpStatus = http.StatusServiceUnavailable
 	}
@@ -973,18 +966,19 @@ func (api *ApiHandler) getRecipesByUser(c echo.Context) error {
 	}
 
 	// Get the user ID
-	user, err := db.GetUsername(api.pg, c.Param("username"))
+	user, err := api.dbh.GetUsername(c.Param("username"))
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return NewNotFoundError(errors.New("user not found"))
 		}
 		return NewInternalServerError(err)
 	}
+	return c.JSON(http.StatusOK, user)
 
 	s := simpleRequest{
 		Context:  &c,
 		Method:   "getRecipesByUser",
-		Url:      fmt.Sprintf("%s/recipe/user/%s", api.conf.RecipeMSURL, user.UUID),
+		Url:      fmt.Sprintf("%s/recipe/user/%s", api.conf.RecipeMSURL, user.GetUUID()),
 		HttpVerb: http.MethodGet,
 		Request:  nil,
 		Response: new([]services.Recipe),

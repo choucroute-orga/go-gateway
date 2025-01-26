@@ -5,13 +5,13 @@ WORKDIR /usr/src/app/
 RUN apk update
 
 RUN --mount=type=cache,target=/go/pkg/mod/ \
-    --mount=type=bind,source=./go-gateway/go.sum,target=go.sum \
-    --mount=type=bind,source=./go-gateway/go.mod,target=go.mod \
+    --mount=type=bind,source=./go.sum,target=go.sum \
+    --mount=type=bind,source=./go.mod,target=go.mod \
     go mod download
 
 RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=bind,rw,source=./go-gateway,target=. \
+    --mount=type=bind,rw,source=./,target=. \
     go build -ldflags "-s -w" -o /go/bin/gateway/ ./
 
 FROM alpine

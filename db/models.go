@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -17,6 +18,38 @@ type User struct {
 	EncryptionKey EncryptionKey
 }
 
+func (u *User) GetId() string {
+	return fmt.Sprintf("%d", u.ID)
+}
+
+func (u *User) GetUUID() string {
+	return u.UUID
+}
+
+func (u *User) GetEmail() string {
+	return u.Email
+}
+
+func (u *User) GetUsername() string {
+	return u.Username
+}
+
+func (u *User) GetPassword() string {
+	return u.Password
+}
+
+func (u *User) GetFirstName() string {
+	return u.FirstName
+}
+
+func (u *User) GetLastName() string {
+	return u.LastName
+}
+
+func (u *User) GetEncryptionKey() string {
+	return u.EncryptionKey.SecretKey
+}
+
 type EncryptionKey struct {
 	gorm.Model
 	SecretKey string
@@ -28,4 +61,20 @@ type Token struct {
 	Value          string
 	ExpirationDate time.Time
 	UserID         uint
+}
+
+func (t *Token) GetId() string {
+	return fmt.Sprintf("%d", t.ID)
+}
+
+func (t *Token) GetValue() string {
+	return t.Value
+}
+
+func (t *Token) GetUserID() string {
+	return fmt.Sprintf("%d", t.UserID)
+}
+
+func (t *Token) GetExpirationDate() time.Time {
+	return t.ExpirationDate
 }

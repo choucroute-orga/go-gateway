@@ -12,7 +12,6 @@ var logger = logrus.WithFields(logrus.Fields{
 })
 
 type Configuration struct {
-	SecretKey           string
 	ListenPort          string
 	ListenAddress       string
 	ListenRoute         string
@@ -33,6 +32,11 @@ type Configuration struct {
 	TranslateValidation bool
 	JWTSecret           string
 	OtelServiceName     string
+	SurrealDBURL        string
+	SurrealDBUsername   string
+	SurrealDBPassword   string
+	SurrealDBDatabase   string
+	SurrealDBNamespace  string
 }
 
 func New() *Configuration {
@@ -93,24 +97,18 @@ func New() *Configuration {
 		os.Exit(1)
 	}
 
-	// Secret Key must be 16, 32 or 64 bytes long
-	conf.SecretKey = os.Getenv("SECRET_KEY")
-	if len(conf.SecretKey) < 1 {
-		logger.Error("SECRET_KEY is required")
-		os.Exit(1)
-	}
-
-	if len(conf.SecretKey) != 16 && len(conf.SecretKey) != 32 && len(conf.SecretKey) != 64 {
-		logger.Error("SECRET_KEY must be 16, 32 or 64 bytes long, not ", len(conf.SecretKey))
-		os.Exit(1)
-	}
-
 	conf.OtelServiceName = os.Getenv("OTEL_SERVICE_NAME")
 
 	if len(conf.OtelServiceName) < 1 {
 		logger.Error("OTEL_SERVICE_NAME is required")
 		os.Exit(1)
 	}
+
+	conf.SurrealDBDatabase = os.Getenv("SURREALDB_DATABASE")
+	conf.SurrealDBNamespace = os.Getenv("SURREALDB_NAMESPACE")
+	conf.SurrealDBPassword = os.Getenv("SURREALDB_PASSWORD")
+	conf.SurrealDBURL = os.Getenv("SURREALDB_URL")
+	conf.SurrealDBUsername = os.Getenv("SURREALDB_USERNAME")
 
 	return &conf
 }

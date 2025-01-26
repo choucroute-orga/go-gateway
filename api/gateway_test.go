@@ -166,7 +166,11 @@ func setupTest(t *testing.T) (*ApiHandler, func()) {
 		DBTimezone:    "Europe/Paris",
 	}
 
-	api := NewApiHandler(client, nil, conf)
+	db, err := db.NewPostgresHandler(conf)
+	if err != nil {
+		t.Fatalf("Failed to create PostgresDB handler: %v", err)
+	}
+	api := NewApiHandler(db, nil, conf)
 
 	// Return cleanup function
 	return api, func() {
@@ -215,27 +219,27 @@ func TestDB(t *testing.T) {
 			test: func(t *testing.T) {
 				api, cleanup := setupTest(t)
 				defer cleanup()
-				user1 := db.User{
+				user1 := db.UserRequest{
+					Email:    "user1@test.me",
 					Username: "user1",
 					Password: "password",
-					Email:    "user1@test.me",
 				}
-				u1, err := db.CreateUser(api.pg, user1)
+				u1, err := api.dbh.CreateUser(&user1)
 				if err != nil {
 					t.Fatalf("Failed to insert user: %v", err)
 				}
 
 				// Check if the user has an id, username, password and email
-				if u1.Username != "user1" || u1.Password != "password" || u1.Email != "user1@test.me" {
+				if u1.GetUsername() != "user1" || u1.GetPassword() != "password" || u1.GetEmail() != "user1@test.me" {
 					t.Fatalf("User not inserted: %v", u1)
 				}
 
 				// Retrieve the user from the DB
-				u2, err := db.GetUsername(api.pg, "user1")
+				u2, err := api.dbh.GetUsername("user1")
 				if err != nil {
 					t.Fatalf("Failed to get user: %v", err)
 				}
-				if u2.Username != "user1" || u2.Password != "password" || u2.Email != "user1@test.me" {
+				if u2.GetUsername() != "user1" || u2.GetPassword() != "password" || u2.GetEmail() != "user1@test.me" {
 					t.Fatalf("User not retrieved: %v", u2)
 				}
 			},
@@ -245,37 +249,37 @@ func TestDB(t *testing.T) {
 			test: func(t *testing.T) {
 				api, cleanup := setupTest(t)
 				defer cleanup()
-				userId := uint(900)
+				userId := "900"
 				value := "token1"
-				token1 := db.Token{
+				token1 := db.TokenRequest{
 					UserID:         userId,
 					Value:          value,
 					ExpirationDate: time.Now().UTC().Add(time.Hour),
 				}
 
-				t1, err := db.UpsertToken(api.pg, token1)
+				t1, err := api.dbh.UpsertToken(&token1)
 				if err != nil {
 					t.Fatalf("Failed to insert token: %v", err)
 				}
 
 				// Check if the token has an id, value, expiration date and user id
-				t1expRound := t1.ExpirationDate.Round(time.Second)
+				t1expRound := t1.GetExpirationDate().Round(time.Second)
 				token1expRound := token1.ExpirationDate.Round(time.Second)
-				if t1.Value != value || t1expRound != token1expRound || t1.UserID != userId {
+				if t1.GetValue() != value || t1expRound != token1expRound || t1.GetUserID() != userId {
 					t.Fatalf("Token not inserted: %v", t1)
 				}
 
-				t2, err := db.GetTokenUser(api.pg, value, userId)
+				t2, err := api.dbh.GetTokenUser(value, userId)
 				if err != nil {
 					t.Fatalf("Failed to get token: %v", err)
 				}
-				if t2.Value != value || t2.UserID != userId {
+				if t2.GetValue() != value || t2.GetUserID() != userId {
 					t.Fatalf("Token not retrieved: %v", t2)
 				}
 
 				// Check that the expiration date matches rounded to the millisecond
-				t2Round := t2.ExpirationDate.Round(time.Millisecond)
-				token1Round := t1.ExpirationDate.Round(time.Millisecond)
+				t2Round := t2.GetExpirationDate().Round(time.Millisecond)
+				token1Round := t1.GetExpirationDate().Round(time.Millisecond)
 
 				tolerance := time.Millisecond // Adjust tolerance as needed
 				if t2Round.Sub(token1Round).Abs() > tolerance {
@@ -288,29 +292,29 @@ func TestDB(t *testing.T) {
 			test: func(t *testing.T) {
 				api, cleanup := setupTest(t)
 				defer cleanup()
-				userId1 := uint(1004)
+				userId1 := "1004"
 				value1 := "token1"
 				exp1 := time.Now().UTC().Add(time.Hour)
-				userId2 := uint(1005)
+				userId2 := "1005"
 				value2 := "token2"
 				exp2 := time.Now().UTC().Add(time.Hour * 2)
 
-				t1 := &db.Token{
+				t1 := &db.TokenRequest{
 					UserID:         userId1,
 					Value:          value1,
 					ExpirationDate: exp1,
 				}
-				t2 := &db.Token{
+				t2 := &db.TokenRequest{
 					UserID:         userId2,
 					Value:          value2,
 					ExpirationDate: exp2,
 				}
 
-				_, err := db.UpsertToken(api.pg, *t1)
+				_, err := api.dbh.UpsertToken(t1)
 				if err != nil {
 					t.Fatalf("Failed to insert token: %v", err)
 				}
-				_, err = db.UpsertToken(api.pg, *t2)
+				_, err = api.dbh.UpsertToken(t2)
 				if err != nil {
 					t.Fatalf("Failed to insert token: %v", err)
 				}
@@ -319,25 +323,25 @@ func TestDB(t *testing.T) {
 				t1.Value = "newToken"
 				newExp := time.Now().UTC().Add(time.Hour * 3)
 				t1.ExpirationDate = newExp
-				_, err = db.UpsertToken(api.pg, *t1)
+				_, err = api.dbh.UpsertToken(t1)
 				if err != nil {
 					t.Fatalf("Failed to insert token: %v", err)
 				}
 				// Ensure the first token has changed
-				t1, err = db.GetTokenUser(api.pg, "newToken", userId1)
+				t5, err := api.dbh.GetTokenUser("newToken", userId1)
 				if err != nil {
 					t.Fatalf("Failed to get token: %v", err)
 				}
-				if t1.Value != "newToken" || t1.UserID != userId1 {
+				if t5.GetValue() != "newToken" || t5.GetUserID() != userId1 {
 					t.Fatalf("Token has changed. Expected value=%v, userId=%v, got %v", "newToken", userId1, t1)
 				}
 
 				// Retrieve the 2nd token and check if it's the same
-				t2, err = db.GetTokenUser(api.pg, value2, userId2)
+				t6, err := api.dbh.GetTokenUser(value2, userId2)
 				if err != nil {
 					t.Fatalf("Failed to get token: %v", err)
 				}
-				if t2.Value != value2 || t2.UserID != userId2 {
+				if t6.GetValue() != value2 || t6.GetUserID() != userId2 {
 					t.Fatalf("Token has changed expected value=%v, userId=%v, got %v", value2, userId2, t2)
 				}
 			},
@@ -347,24 +351,24 @@ func TestDB(t *testing.T) {
 			test: func(t *testing.T) {
 				api, cleanup := setupTest(t)
 				defer cleanup()
-				userId := uint(11)
+				userId := "11"
 				value := "token"
-				token := db.Token{
+				token := db.TokenRequest{
 					UserID:         userId,
 					Value:          value,
 					ExpirationDate: time.Now().UTC().Add(time.Hour),
 				}
-				_, err := db.UpsertToken(api.pg, token)
+				_, err := api.dbh.UpsertToken(&token)
 				if err != nil {
 					t.Fatalf("Failed to insert token: %v", err)
 				}
-				err = db.DeleteToken(api.pg, userId)
+				err = api.dbh.DeleteToken(userId)
 				if err != nil {
 					t.Fatalf("Failed to delete token: %v", err)
 				}
 
 				// Check if the token has been deleted
-				t2, err := db.GetTokenUser(api.pg, value, userId)
+				t2, err := api.dbh.GetTokenUser(value, userId)
 				if err == nil {
 					t.Fatalf("Token not deleted: %v", t2)
 				}

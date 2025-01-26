@@ -2,7 +2,7 @@ package api
 
 import (
 	"errors"
-	"gateway/db"
+	"fmt"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
@@ -11,7 +11,7 @@ import (
 type jwtCustomClaims struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
-	UserID   uint   `json:"userId"`
+	UserID   string `json:"userId"`
 	jwt.RegisteredClaims
 }
 
@@ -20,7 +20,8 @@ func (api *ApiHandler) extractUser(next echo.HandlerFunc) echo.HandlerFunc {
 		user := c.Get("user").(*jwt.Token)
 		claims := user.Claims.(*jwtCustomClaims)
 		logger.Debugln(claims.ID)
-		t, err := db.GetTokenUser(api.pg, user.Raw, claims.UserID)
+		userId := fmt.Sprintf("%v", claims.UserID)
+		t, err := api.dbh.GetTokenUser(user.Raw, userId)
 		if err != nil {
 			logger.WithError(err).Debug("Failed to get token")
 			return NewUnauthorizedError(errors.New("You are not authorized to access this resource"))
